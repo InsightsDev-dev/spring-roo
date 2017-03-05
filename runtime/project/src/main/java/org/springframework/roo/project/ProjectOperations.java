@@ -2,15 +2,17 @@ package org.springframework.roo.project;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.roo.model.JavaPackage;
 import org.springframework.roo.project.maven.Pom;
 
 /**
  * Methods for various project-related operations.
- * 
+ *
  * @author Ben Alex
  * @author Paula Navarro
+ * @author Juan Carlos García
  * @since 1.0
  */
 public interface ProjectOperations {
@@ -21,28 +23,216 @@ public interface ProjectOperations {
    * {@link ProjectMetadata#isBuildPluginRegistered(org.springframework.roo.project.Plugin)}
    * , the method silently returns. Otherwise the plugin is added.
    * <p>
+   * By default, includes the provided plugin into pluginManagement
+   * element.
+   * <p>
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param plugin the plugin to add (required)
    */
   void addBuildPlugin(final String moduleName, Plugin plugin);
 
   /**
-   * Attempts to add the specified plugins. If all the plugins already exist
-   * according to {@link ProjectMetadata#isAllPluginRegistered(Plugin)}, the
-   * method silently returns. Otherwise each new dependency is added.
+   * Attempts to add the specified build plugin. If the plugin already exists
+   * according to
+   * {@link ProjectMetadata#isBuildPluginRegistered(org.springframework.roo.project.Plugin)}
+   * , the method silently returns. Otherwise the plugin is added.
+   * <p>
+   * If addToPluginManagement parameter has true value, the new plugin will
+   * be included into pluginManagement element. If false, the provided plugin
+   * will be included only as plugin.
    * <p>
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
    * 
    * @param moduleName the name of the module to act upon (required)
+   * @param addToPluginManagement boolean that indicates if the new Plugin
+   * 		should be included into pluginManagement element or not.
+   * @param plugin the plugin to add (required)
+   */
+  void addBuildPlugin(final String moduleName, Plugin plugin, boolean addToPluginManagement);
+
+  /**
+   * Attempts to add the specified plugins. If all the plugins already exist
+   * according to {@link ProjectMetadata#isAllPluginRegistered(Plugin)}, the
+   * method silently returns. Otherwise each new dependency is added.
+   * <p>
+   * By default, includes the provided plugin into pluginManagement
+   * element.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   *
+   * @param moduleName the name of the module to act upon (required)
    * @param plugins the plugins to add (required)
    */
   void addBuildPlugins(final String moduleName, Collection<? extends Plugin> plugins);
+
+  /**
+   * Attempts to add the specified plugins. If all the plugins already exist
+   * according to {@link ProjectMetadata#isAllPluginRegistered(Plugin)}, the
+   * method silently returns. Otherwise each new dependency is added.
+   * <p>
+   * If addToPluginManagement parameter has true value, the new plugin will
+   * be included into pluginManagement element. If false, the provided plugin
+   * will be included only as plugin.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param addToPluginManagement boolean that indicates if the new Plugin
+   * 		should be included into pluginManagement element or not.
+   * @param plugins the plugins to add (required)
+   */
+  void addBuildPlugins(final String moduleName, Collection<? extends Plugin> plugins,
+      boolean addToPluginManagement);
+
+  /**
+   * Attempts to add the specified package into the specified plugin execution. 
+   * If the package already exists or the execution does not exist in the specified plugin, the
+   * method silently returns. Otherwise the package is added.
+   * <p>
+   * By default, includes the provided package into pluginManagement
+   * element.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param plugin the plugin where add the package (required)
+   * @param executionId the id of the plugin execution where add the package (required)
+   * @param packageName the package to add (required)
+   */
+  void addPackageToPluginExecution(final String moduleName, final Plugin plugin,
+      String executionId, final String packageName);
+
+  /**
+   * Attempts to add the specified package into the specified plugin execution. 
+   * If the package already exists or the execution does not exist in the specified plugin, the
+   * method silently returns. Otherwise the package is added.
+   * <p>
+   * If addToPluginManagement parameter has true value, the new plugin will
+   * be included into pluginManagement element. If false, the provided plugin
+   * will be included only as plugin.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param plugin the plugin where add the package (required)
+   * @param executionId the id of the plugin execution where add the package (required)
+   * @param packageName the package to add (required)
+   * @param addToPluginManagement boolean that indicates if the new Plugin
+   * 		should be included into pluginManagement element or not.
+   */
+  void addPackageToPluginExecution(final String moduleName, final Plugin plugin,
+      String executionId, final String packageName, boolean addToPluginManagement);
+
+  /**
+   * Attempts to add the specified element into the specified plugin execution. 
+   * If the element already exists or the execution does not exist in the specified plugin, the
+   * method silently returns. Otherwise the element is added.
+   * <p>
+   * By default, includes the provided element into pluginManagement
+   * element.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param plugin the plugin where add the package (required)
+   * @param executionId the id of the plugin execution where add the package (required)
+   * @param parentElementName the parentElement name that should be included inside configuration element
+   * @param elementName the element name that should be included inside the parentElementName provided before
+   * @param elementValue the value to add (required)
+   */
+  void addElementToPluginExecution(final String moduleName, final Plugin plugin,
+      String executionId, String parentElementName, String elementName, final String elementValue);
+
+  /**
+   * Attempts to add the specified element into the specified plugin execution. 
+   * If the element already exists or the execution does not exist in the specified plugin, the
+   * method silently returns. Otherwise the element is added.
+   * <p>
+   * By default, includes the provided element into pluginManagement
+   * element.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param plugin the plugin where add the package (required)
+   * @param executionId the id of the plugin execution where add the package (required)
+   * @param parentElementName the parentElement name that should be included inside configuration element
+   * @param elementName the element name that should be included inside the parentElementName provided before
+   * @param elementValue the value to add (required)
+   * @param addToPluginManagement boolean that indicates if the new element
+   * 		should be included into pluginManagement element or not.
+
+   */
+  void addElementToPluginExecution(final String moduleName, final Plugin plugin,
+      String executionId, String parentElementName, String elementName, final String elementValue,
+      boolean addToPluginManagement);
+
+  /**
+   * Attempts to add the specified element into the specified plugin execution. 
+   * If the element already exists or the execution does not exist in the specified plugin, the
+   * method silently returns. Otherwise the element is added.
+   * <p>
+   * By default, includes the provided element into pluginManagement
+   * element.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param plugin the plugin where add the package (required)
+   * @param executionId the id of the plugin execution where add the package (required)
+   * @param parentElementName the parentElement name that should be included inside configuration element
+   * @param elementName the element name that should be included inside the parentElementName provided before
+   * @param elementValues the values to add (required)
+   */
+  void addElementToPluginExecution(final String moduleName, final Plugin plugin,
+      String executionId, String parentElementName, String elementName,
+      final Map<String, String> elementValues);
+
+  /**
+   * Attempts to add the specified element into the specified plugin execution. 
+   * If the element already exists or the execution does not exist in the specified plugin, the
+   * method silently returns. Otherwise the element is added.
+   * <p>
+   * By default, includes the provided element into pluginManagement
+   * element.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param plugin the plugin where add the package (required)
+   * @param executionId the id of the plugin execution where add the package (required)
+   * @param parentElementName the parentElement name that should be included inside configuration element
+   * @param elementName the element name that should be included inside the parentElementName provided before
+   * @param elementValues the values to add (required)
+   * @param addToPluginManagement boolean that indicates if the new element
+   * 		should be included into pluginManagement element or not.
+
+   */
+  void addElementToPluginExecution(final String moduleName, final Plugin plugin,
+      String executionId, String parentElementName, String elementName,
+      final Map<String, String> elementValues, boolean addToPluginManagement);
 
   /**
    * Attempts to add the specified dependencies. If all the dependencies
@@ -50,10 +240,13 @@ public interface ProjectOperations {
    * {@link ProjectMetadata#isAllDependencyRegistered(Dependency)}, the method
    * silently returns. Otherwise each new dependency is added.
    * <p>
+   * By default, includes the provided dependencies into dependencyManagement
+   * element.
+   * <p>
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param dependencies the dependencies to add (required)
    * @return List of dependencies added on current operation
@@ -62,15 +255,44 @@ public interface ProjectOperations {
       Collection<? extends Dependency> dependencies);
 
   /**
-   * Attempts to add the specified dependency. If the dependency already
-   * exists according to to
-   * {@link ProjectMetadata#isDependencyRegistered(org.springframework.roo.project.Dependency)}
-   * , the method silently returns. Otherwise the dependency is added.
+   * Attempts to add the specified dependencies. If all the dependencies
+   * already exist according to
+   * {@link ProjectMetadata#isAllDependencyRegistered(Dependency)}, the method
+   * silently returns. Otherwise each new dependency is added.
+   * <p>
+   * If addToDependencyManagement parameter has true value, the new dependency will
+   * be included into dependencyManagement element. If false, the provided dependency
+   * will be included only as dependency.
    * <p>
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
    * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param dependencies the dependencies to add (required)
+   * @param addToDependencyManagement boolean that indicates if the new Dependency
+   * 		should be included into dependencyManagement element or not.
+   * @param checkFullDependency whether should check the existence with full 
+   *            dependency element or only compare 'artifactId' and 'groupId'.
+   * @return List of dependencies added on current operation
+   */
+  List<Dependency> addDependencies(final String moduleName,
+      Collection<? extends Dependency> dependencies, boolean addToDependencyManagement,
+      boolean checkFullDependency);
+
+  /**
+   * Attempts to add the specified dependency. If the dependency already
+   * exists according to to
+   * {@link ProjectMetadata#isDependencyRegistered(org.springframework.roo.project.Dependency)}
+   * , the method silently returns. Otherwise the dependency is added.
+   * <p>
+   * By default, includes the provided dependency into dependencyManagement
+   * element.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param dependency the dependency to add (required)
    * @return added dependency
@@ -78,11 +300,64 @@ public interface ProjectOperations {
   Dependency addDependency(final String moduleName, Dependency dependency);
 
   /**
+   * Attempts to add the specified dependency. If the dependency already
+   * exists according to to
+   * {@link ProjectMetadata#isDependencyRegistered(org.springframework.roo.project.Dependency)}
+   * , the method silently returns. Otherwise the dependency is added.
+   * <p>
+   * If addToDependencyManagement parameter has true value, the new dependency will
+   * be included into dependencyManagement element. If false, the provided dependency
+   * will be included only as dependency.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param dependency the dependency to add (required)
+   * @param addToDependencyManagement boolean that indicates if the new Dependency
+   *        should be included into dependencyManagement element or not.
+   * @return added dependency
+   */
+  Dependency addDependency(final String moduleName, Dependency dependency,
+      boolean addToDependencyManagement);
+
+
+  /**
+   * Attempts to add the specified dependency. If the dependency already
+   * exists according to to
+   * {@link ProjectMetadata#isDependencyRegistered(org.springframework.roo.project.Dependency)}
+   * , the method silently returns. Otherwise the dependency is added.
+   * <p>
+   * If addToDependencyManagement parameter has true value, the new dependency will
+   * be included into dependencyManagement element. If false, the provided dependency
+   * will be included only as dependency.
+   * <p>
+   * An exception is thrown if this method is called before there is
+   * {@link ProjectMetadata} available, or if the on-disk representation
+   * cannot be modified for any reason.
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param dependency the dependency to add (required)
+   * @param addToDependencyManagement boolean that indicates if the new Dependency
+   * 		should be included into dependencyManagement element or not.
+   * @param checkFullDependency whether should check the existence with full 
+   *            dependency element or only compare 'artifactId' and 'groupId'.
+   * @return added dependency
+   */
+  Dependency addDependency(final String moduleName, Dependency dependency,
+      boolean addToDependencyManagement, boolean checkFullDependency);
+
+  /**
    * Allows addition of a JAR dependency to the POM.
    * <p>
    * Provides a convenient way for third parties to instruct end users how to
    * use the CLI to add support for their projects without requiring the user
    * to manually edit a pom.xml or write an add-on.
+   * <p>
+   * By default, includes the provided dependency into dependencyManagement
+   * element.
+   * <p>
    * 
    * @param moduleName the name of the module to act upon (required)
    * @param groupId the group id of the dependency (required)
@@ -99,6 +374,33 @@ public interface ProjectOperations {
    * Provides a convenient way for third parties to instruct end users how to
    * use the CLI to add support for their projects without requiring the user
    * to manually edit a pom.xml or write an add-on.
+   * <p>
+   * If addToDependencyManagement parameter has true value, the new dependency will
+   * be included into dependencyManagement element. If false, the provided dependency
+   * will be included only as dependency.
+   * <p>
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param groupId the group id of the dependency (required)
+   * @param artifactId the artifact id of the dependency (required)
+   * @param version the version of the dependency (required)
+   * @param addToDependencyManagement boolean that indicates if the new Dependency
+   * 		should be included into dependencyManagement element or not.
+   * @return added dependency
+   */
+  Dependency addDependency(final String moduleName, String groupId, String artifactId,
+      String version, boolean addToDependencyManagement);
+
+  /**
+   * Allows addition of a JAR dependency to the POM.
+   * <p>
+   * Provides a convenient way for third parties to instruct end users how to
+   * use the CLI to add support for their projects without requiring the user
+   * to manually edit a pom.xml or write an add-on.
+   * <p>
+   * By default, includes the provided dependency into dependencyManagement
+   * element.
+   * <p>
    * 
    * @param moduleName the name of the module to act upon (required)
    * @param groupId the group id of the dependency (required)
@@ -116,6 +418,34 @@ public interface ProjectOperations {
    * Provides a convenient way for third parties to instruct end users how to
    * use the CLI to add support for their projects without requiring the user
    * to manually edit a pom.xml or write an add-on.
+   * <p>
+   * If addToDependencyManagement parameter has true value, the new dependency will
+   * be included into dependencyManagement element. If false, the provided dependency
+   * will be included only as dependency.
+   * <p>
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param groupId the group id of the dependency (required)
+   * @param artifactId the artifact id of the dependency (required)
+   * @param version the version of the dependency (required)
+   * @param scope the scope of the dependency
+   * @param addToDependencyManagement boolean that indicates if the new Dependency
+   * 		should be included into dependencyManagement element or not.
+   * @return added dependency
+   */
+  Dependency addDependency(final String moduleName, String groupId, String artifactId,
+      String version, DependencyScope scope, boolean addToDependencyManagement);
+
+  /**
+   * Allows addition of a JAR dependency to the POM.
+   * <p>
+   * Provides a convenient way for third parties to instruct end users how to
+   * use the CLI to add support for their projects without requiring the user
+   * to manually edit a pom.xml or write an add-on.
+   * <p>
+   * By default, includes the provided dependency into dependencyManagement
+   * element.
+   * <p>
    * 
    * @param moduleName the name of the module to act upon (required)
    * @param groupId the group id of the dependency (required)
@@ -129,6 +459,31 @@ public interface ProjectOperations {
       String version, DependencyScope scope, String classifier);
 
   /**
+   * Allows addition of a JAR dependency to the POM.
+   * <p>
+   * Provides a convenient way for third parties to instruct end users how to
+   * use the CLI to add support for their projects without requiring the user
+   * to manually edit a pom.xml or write an add-on.
+   * <p>
+   * If addToDependencyManagement parameter has true value, the new dependency will
+   * be included into dependencyManagement element. If false, the provided dependency
+   * will be included only as dependency.
+   * <p>
+   * 
+   * @param moduleName the name of the module to act upon (required)
+   * @param groupId the group id of the dependency (required)
+   * @param artifactId the artifact id of the dependency (required)
+   * @param version the version of the dependency (required)
+   * @param scope the scope of the dependency
+   * @param classifier the classifier of the dependency
+   * @param addToDependencyManagement boolean that indicates if the new Dependency
+   * 		should be included into dependencyManagement element or not.
+   * @return added dependency
+   */
+  Dependency addDependency(final String moduleName, String groupId, String artifactId,
+      String version, DependencyScope scope, String classifier, boolean addToDependencyManagement);
+
+  /**
    * Attempts to add the specified filter. If the filter already exists
    * according to
    * {@link ProjectMetadata#isFilterRegistered(org.springframework.roo.project.Filter)}
@@ -137,7 +492,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param filter the filter to add (required)
    */
@@ -145,19 +500,29 @@ public interface ProjectOperations {
 
   /**
    * Adds the given module as a dependency of the currently focused module.
-   * 
+   *
    * @param moduleToDependUpon the name of the module to act upon (required)
    */
   void addModuleDependency(String moduleToDependUpon);
 
   /**
    * Adds to the given module the dependency with a module.
-   * 
+   *
    * @param moduleName the name of the module where to install the dependency (required)
    * @param moduleToDependUpon the name of the module to act upon (required)
    */
   void addModuleDependency(String moduleName, String moduleToDependUpon);
 
+  /**
+   * Adds to the given module the dependency with a module and with the 
+   * possibility of adding it only with test scope and type.
+   *
+   * @param moduleName the name of the module where to install the dependency (required)
+   * @param moduleToDependUpon the name of the module to act upon (required)
+   * @param testDependency whether the module dependency should be added with test 
+   *            scope and as test type dependency.
+   */
+  void addModuleDependency(String moduleName, String moduleToDependUpon, boolean testDependency);
 
   /**
    * Attempts to add the specified plugin repositories. If all the
@@ -168,7 +533,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param repositories a list of plugin repositories to add (required)
    */
@@ -183,7 +548,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param repository the plugin repository to add (required)
    */
@@ -198,7 +563,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param property the property to add (required)
    */
@@ -213,7 +578,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param repositories a list of repositories to add (required)
    */
@@ -228,7 +593,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param repository the repository to add (required)
    */
@@ -242,55 +607,23 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param resource the resource to add (required)
    */
   void addResource(final String moduleName, Resource resource);
 
   /**
-   * Attempts to add the specified package into the specified plugin execution. 
-   * If the package already exists or the execution does not exist in the specified plugin, the
-   * method silently returns. Otherwise the package is added.
-   * <p>
-   * An exception is thrown if this method is called before there is
-   * {@link ProjectMetadata} available, or if the on-disk representation
-   * cannot be modified for any reason.
-   * 
-   * @param moduleName the name of the module to act upon (required)
-   * @param plugin the plugin where add the package (required)
-   * @param executionId the id of the plugin execution where add the package (required)
-   * @param packageName the package to add (required)
-   */
-  void addPackageToPluginExecution(final String moduleName, final Plugin plugin,
-      String executionId, final String packageName);
-
-  /**
-   * Verifies if the specified build plugin is present. If it is present,
-   * silently returns. If it is not present, removes any build plugin which
-   * matches {@link ProjectMetadata#getBuildPluginsExcludingVersion(Plugin)}.
-   * Always adds the presented plugin.
-   * <p>
-   * This method is deprecated - use {@link #updateBuildPlugin(Plugin)}
-   * instead.
-   * 
-   * @param moduleName the name of the module to act upon (required)
-   * @param plugin the build plugin to update (required)
-   */
-  @Deprecated
-  void buildPluginUpdate(final String moduleName, Plugin plugin);
-
-  /**
    * Returns the {@link Pom} of the currently focussed module, or if no module
    * has the focus, the root {@link Pom}.
-   * 
+   *
    * @return <code>null</code> if none of the above descriptors exist
    */
   Pom getFocusedModule();
 
   /**
    * Returns the name of the currently focussed module.
-   * 
+   *
    * @return an empty string if no module has the focus, otherwise a
    *         fully-qualified name separated by {@link java.io.File#separator}
    */
@@ -298,7 +631,7 @@ public interface ProjectOperations {
 
   /**
    * Returns the metadata for the currently focussed module.
-   * 
+   *
    * @return <code>null</code> if no project metadata is available
    */
   ProjectMetadata getFocusedProjectMetadata();
@@ -315,7 +648,7 @@ public interface ProjectOperations {
 
   /**
    * Returns the module to which the given file belongs
-   * 
+   *
    * @param fileIdentifier the canonical path to look up
    * @return see above
    */
@@ -323,7 +656,7 @@ public interface ProjectOperations {
 
   /**
    * Returns the names of each module in the user's project
-   * 
+   *
    * @return a non-<code>null</code> list
    */
   Collection<String> getModuleNames();
@@ -331,14 +664,14 @@ public interface ProjectOperations {
   /**
    * Convenience method to return the {@link PathResolver} from the project's
    * {@link ProjectMetadata}.
-   * 
+   *
    * @return the {@link PathResolver}, or null if the project is unavailable
    */
   PathResolver getPathResolver();
 
   /**
    * Returns the given module's {@link Pom}
-   * 
+   *
    * @param moduleName the fully-qualified name of the module (required)
    * @return
    */
@@ -346,14 +679,14 @@ public interface ProjectOperations {
 
   /**
    * Returns the {@link Pom}s for all modules of the user's project
-   * 
+   *
    * @return a non-<code>null</code> collection
    */
   Collection<Pom> getPoms();
 
   /**
    * Returns the {@link ProjectMetadata} for the given module.
-   * 
+   *
    * @param moduleName the module whose metadata is being requested (can be
    *            empty to signify the root or only module)
    * @return <code>null</code> if the metadata is not available
@@ -375,7 +708,7 @@ public interface ProjectOperations {
   /**
    * Indicates whether the supplied feature is installed in any module of a
    * project.
-   * 
+   *
    * @param featureName the name of the feature (see {@link FeatureNames} for
    *            available features)
    * @return true if the feature is installed in any module, otherwise false
@@ -385,7 +718,7 @@ public interface ProjectOperations {
   /**
    * Indicates whether any of the supplied features are installed in any module of a
    * project.
-   * 
+   *
    * @param featureNames the names of the features (see {@link FeatureNames}
    *            for available features)
    * @return true if any of the supplied features are installed in the focused
@@ -394,30 +727,42 @@ public interface ProjectOperations {
   boolean isFeatureInstalled(String... featureNames);
 
   /**
+   * Indicates whether any of the supplied features are installed in the 
+   * provided module.
+   *
+   * @param module the {@link Pom} where to search the feature.
+   * @param featureName the names of the feature (see {@link FeatureNames}
+   *            for available features)
+   * @return `true` if the supplied feature is installed in the provided module, 
+   *            otherwise `false`.
+   */
+  boolean isFeatureInstalled(Pom module, String featureName);
+
+  /**
    * Indicates whether the module whose name has the focus, if any, is
    * available.
-   * 
+   *
    * @return see above
    */
   boolean isFocusedProjectAvailable();
 
   /**
    * Indicates whether the user can create a new project module
-   * 
+   *
    * @return see above
    */
   boolean isModuleCreationAllowed();
 
   /**
    * Indicates whether the user can change the focused module
-   * 
+   *
    * @return see above
    */
   boolean isModuleFocusAllowed();
 
   /**
    * Indicates whether the project is multimodule
-   * 
+   *
    * @return see above
    */
   boolean isMultimoduleProject();
@@ -425,7 +770,7 @@ public interface ProjectOperations {
 
   /**
    * Indicates whether a module with the given name is available.
-   * 
+   *
    * @param moduleName the name of the module to act upon (can be blank)
    * @return see above
    */
@@ -434,7 +779,7 @@ public interface ProjectOperations {
   /**
    * Removes any plugins with the same groupId and artifactId as the given
    * plugin.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param plugin the plugin to remove (can be <code>null</code>)
    * @throws IllegalArgumentException if this method is called before the
@@ -446,7 +791,7 @@ public interface ProjectOperations {
   /**
    * Removes any plugins with the same groupId and artifactId as the given
    * plugin and immediately writes the pom to the file system.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param plugin the plugin to remove (can be <code>null</code>)
    * @throws IllegalArgumentException if this method is called before the
@@ -458,7 +803,7 @@ public interface ProjectOperations {
   /**
    * Removes any plugins with the same groupId and artifactId as any of the
    * given plugins.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param plugins the plugins to remove; can be <code>null</code>, any
    *            <code>null</code> elements will be quietly ignored
@@ -477,7 +822,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param dependencies the dependencies to remove (required)
    */
@@ -492,7 +837,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param dependency the dependency to remove (required)
    */
@@ -504,7 +849,7 @@ public interface ProjectOperations {
    * Provides a convenient way for third parties to instruct end users how to
    * use the CLI to remove an unwanted dependency from their projects without
    * requiring the user to manually edit a pom.xml or write an add-on.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param groupId the group id of the dependency (required)
    * @param artifactId the artifact id of the dependency (required)
@@ -518,7 +863,7 @@ public interface ProjectOperations {
    * Provides a convenient way for third parties to instruct end users how to
    * use the CLI to remove an unwanted dependency from their projects without
    * requiring the user to manually edit a pom.xml or write an add-on.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param groupId the group id of the dependency (required)
    * @param artifactId the artifact id of the dependency (required)
@@ -537,7 +882,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param filter the filter to remove (required)
    */
@@ -553,7 +898,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param repository the plugin repository to remove (required)
    */
@@ -568,7 +913,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param property the property to remove (required)
    */
@@ -583,7 +928,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param repository the repository to remove (required)
    */
@@ -597,7 +942,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param resource the resource to remove (required)
    */
@@ -605,7 +950,7 @@ public interface ProjectOperations {
 
   /**
    * Sets the currently focused module
-   * 
+   *
    * @param module the module to focus upon (required)
    */
   void setModule(Pom module);
@@ -615,7 +960,7 @@ public interface ProjectOperations {
    * silently returns. If it is not present, removes any build plugin which
    * matches {@link ProjectMetadata#getBuildPluginsExcludingVersion(Plugin)}.
    * Always adds the presented plugin.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param plugin the build plugin to update (required)
    */
@@ -630,7 +975,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param dependency the dependency to update (required)
    * @param dependencyScope the dependency scope. May be null, in which case
@@ -647,7 +992,7 @@ public interface ProjectOperations {
    * An exception is thrown if this method is called before there is
    * {@link ProjectMetadata} available, or if the on-disk representation
    * cannot be modified for any reason.
-   * 
+   *
    * @param moduleName the name of the module to act upon (required)
    * @param projectType the project type to update (required)
    */

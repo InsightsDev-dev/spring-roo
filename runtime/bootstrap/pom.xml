@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.roo</groupId>
         <artifactId>org.springframework.roo.runtime</artifactId>
-        <version>2.0.0.BUILD-SNAPSHOT</version>
+        <version>2.0.0.RC1</version>
         <relativePath>../../runtime</relativePath>
     </parent>
     <artifactId>org.springframework.roo.bootstrap</artifactId>
@@ -15,6 +15,11 @@
     <name>Spring Roo - Runtime - Bootstrap</name>
     <description>Main classes, OSGi services implementations and third party
     libraries needed to execute the runtime environment.</description>
+
+    <properties>
+      <freemarker.version>2.3.23_1</freemarker.version>
+      <target.jar.directory>${project.build.directory}/../../target/all</target.jar.directory>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -28,93 +33,6 @@
                 <exclusion>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>animal-sniffer-annotations</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <!-- JAX-RS (JSR 339) -->
-        <dependency>
-            <groupId>javax.ws.rs</groupId>
-            <artifactId>javax.ws.rs-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.glassfish.hk2.external</groupId>
-            <artifactId>asm-all-repackaged</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.glassfish.jersey.core</groupId>
-            <artifactId>jersey-server</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.glassfish.jersey.containers</groupId>
-            <!-- Jersey core Servlet 2.x implementation -->
-            <artifactId>jersey-container-servlet-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.glassfish.jersey.core</groupId>
-            <artifactId>jersey-common</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.glassfish.jersey.media</groupId>
-            <artifactId>jersey-media-json-processing</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.glassfish</groupId>
-            <artifactId>javax.json</artifactId>
-        </dependency>
-
-        <!-- OSGi HTTP Service -->
-        <dependency>
-            <groupId>org.apache.felix</groupId>
-            <artifactId>org.apache.felix.http.api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.felix</groupId>
-            <artifactId>org.apache.felix.http.servlet-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.roo.wrapping</groupId>
-            <artifactId>org.springframework.roo.wrapping.org.apache.felix.http.jetty</artifactId>
-            <exclusions>
-                <exclusion>
-                    <artifactId>javax.servlet</artifactId>
-                    <groupId>org.eclipse.jetty.orbit</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>jetty-continuation</artifactId>
-                    <groupId>org.eclipse.jetty</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>jetty-http</artifactId>
-                    <groupId>org.eclipse.jetty</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>jetty-util</artifactId>
-                    <groupId>org.eclipse.jetty</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>jetty-jmx</artifactId>
-                    <groupId>org.eclipse.jetty</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>jetty-security</artifactId>
-                    <groupId>org.eclipse.jetty</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>jetty-webapp</artifactId>
-                    <groupId>org.eclipse.jetty</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>jetty-servlet</artifactId>
-                    <groupId>org.eclipse.jetty</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>jetty-server</artifactId>
-                    <groupId>org.eclipse.jetty</groupId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>org.apache.felix.http.base</artifactId>
-                    <groupId>org.apache.felix</groupId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -169,6 +87,7 @@
             <groupId>org.apache.aries</groupId>
             <artifactId>org.apache.aries.util</artifactId>
         </dependency>
+
         <!-- Third party libs -->
         <dependency>
             <groupId>com.github.antlrjavaparser</groupId>
@@ -208,6 +127,7 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-jdk14</artifactId>
          </dependency>
+
         <!-- Wrapped Third Party libs -->
         <dependency>
             <groupId>org.springframework.roo.wrapping</groupId>
@@ -261,7 +181,4 @@
             </plugin>
         </plugins>
     </build>
-    <properties>
-        <target.jar.directory>${project.build.directory}/../../target/all</target.jar.directory>
-    </properties>
 </project>

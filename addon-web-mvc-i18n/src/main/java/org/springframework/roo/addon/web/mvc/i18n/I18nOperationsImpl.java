@@ -1,26 +1,15 @@
 package org.springframework.roo.addon.web.mvc.i18n;
 
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Service;
-import org.jvnet.inflector.Noun;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.component.ComponentContext;
+import org.springframework.roo.addon.plural.addon.PluralService;
+import org.springframework.roo.addon.web.mvc.controller.addon.ControllerMetadata;
 import org.springframework.roo.addon.web.mvc.controller.addon.responses.ControllerMVCResponseService;
 import org.springframework.roo.addon.web.mvc.i18n.components.I18n;
 import org.springframework.roo.addon.web.mvc.i18n.components.I18nSupport;
@@ -28,17 +17,11 @@ import org.springframework.roo.addon.web.mvc.i18n.languages.EnglishLanguage;
 import org.springframework.roo.application.config.ApplicationConfigService;
 import org.springframework.roo.classpath.ModuleFeatureName;
 import org.springframework.roo.classpath.TypeLocationService;
+import org.springframework.roo.classpath.TypeManagementService;
 import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
-import org.springframework.roo.classpath.details.FieldMetadata;
-import org.springframework.roo.classpath.details.MemberHoldingTypeDetails;
-import org.springframework.roo.classpath.details.annotations.AnnotationMetadata;
-import org.springframework.roo.classpath.persistence.PersistenceMemberLocator;
-import org.springframework.roo.classpath.scanner.MemberDetails;
-import org.springframework.roo.classpath.scanner.MemberDetailsScanner;
-import org.springframework.roo.metadata.MetadataItem;
+import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetailsBuilder;
+import org.springframework.roo.classpath.details.annotations.AnnotationMetadataBuilder;
 import org.springframework.roo.metadata.MetadataService;
-import org.springframework.roo.model.JavaSymbolName;
-import org.springframework.roo.model.JavaType;
 import org.springframework.roo.model.RooJavaType;
 import org.springframework.roo.process.manager.FileManager;
 import org.springframework.roo.project.FeatureNames;
@@ -50,12 +33,24 @@ import org.springframework.roo.project.maven.Pom;
 import org.springframework.roo.propfiles.manager.PropFilesManagerService;
 import org.springframework.roo.support.ant.AntPathMatcher;
 import org.springframework.roo.support.logging.HandlerUtils;
-import org.springframework.roo.support.util.XmlUtils;
+import org.springframework.roo.support.osgi.ServiceInstaceManager;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Implementation of {@link I18nOperations}.
- * 
+ *
  * @author Sergio Clares
+ * @author Juan Carlos García
  * @since 2.0
  */
 @Component
@@ -67,19 +62,11 @@ public class I18nOperationsImpl implements I18nOperations {
   // ------------ OSGi component attributes ----------------
   private BundleContext context;
 
-  private TypeLocationService typeLocationService;
-  private I18nSupport i18nSupport;
-  private PathResolver pathResolver;
-  private FileManager fileManager;
-  private ProjectOperations projectOperations;
-  private PropFilesManagerService propFilesManagerService;
-  private PersistenceMemberLocator persistenceMemberLocator;
-  private MemberDetailsScanner memberDetailsScanner;
-  private ApplicationConfigService applicationConfigService;
-  private MetadataService metadataService;
+  private ServiceInstaceManager serviceInstaceManager = new ServiceInstaceManager();
 
   protected void activate(final ComponentContext context) {
     this.context = context.getBundleContext();
+    serviceInstaceManager.activate(this.context);
   }
 
   @Override
@@ -87,7 +74,8 @@ public class I18nOperationsImpl implements I18nOperations {
     return getProjectOperations().isFeatureInstalled(FeatureNames.MVC);
   }
 
-  public void installI18n(final I18n i18n, final Pom module) {
+  @Override
+  public void installLanguage(final I18n language, final boolean useAsDefault, final Pom module) {
 
     // Check if provided module match with application modules features
     Validate.isTrue(getTypeLocationService()
@@ -95,10 +83,10 @@ public class I18nOperationsImpl implements I18nOperations {
         "ERROR: Provided module doesn't match with application modules features. "
             + "Execute this operation again and provide a valid application module.");
 
-    Validate.notNull(i18n, "Language choice required");
+    Validate.notNull(language, "ERROR: You should provide a valid language code.");
 
-    if (i18n.getLocale() == null) {
-      LOGGER.warning("could not parse language choice");
+    if (language.getLocale() == null) {
+      LOGGER.warning("ERROR: Provided language is not valid.");
       return;
     }
 
@@ -107,19 +95,22 @@ public class I18nOperationsImpl implements I18nOperations {
 
     final String targetDirectory = getPathResolver().getIdentifier(resourcesPath, "");
 
-    // Install message bundle
-    String messageBundle = targetDirectory + "messages_" + i18n.getLocale().getLanguage() /* + country */
-        + ".properties";
+    // Getting message.properties file
+    String messageBundle = "";
 
-    // Special case for english locale (default)
-    if (i18n.getLocale().equals(Locale.ENGLISH)) {
+    if (language.getLocale().equals(Locale.ENGLISH)) {
       messageBundle = targetDirectory + "messages.properties";
+    } else {
+      messageBundle =
+          targetDirectory.concat("messages_").concat(
+              language.getLocale().getLanguage().concat(".properties"));
     }
+
     if (!getFileManager().exists(messageBundle)) {
       InputStream inputStream = null;
       OutputStream outputStream = null;
       try {
-        inputStream = i18n.getMessageBundle();
+        inputStream = language.getMessageBundle();
         outputStream = getFileManager().createFile(messageBundle).getOutputStream();
         IOUtils.copy(inputStream, outputStream);
       } catch (final Exception e) {
@@ -133,12 +124,13 @@ public class I18nOperationsImpl implements I18nOperations {
 
     // Install flag
     final String flagGraphic =
-        targetDirectory + "public/img/" + i18n.getLocale().getLanguage() /* + country */+ ".png";
+        targetDirectory.concat("static/public/img/").concat(language.getLocale().getLanguage())
+            .concat(".png");
     if (!getFileManager().exists(flagGraphic)) {
       InputStream inputStream = null;
       OutputStream outputStream = null;
       try {
-        inputStream = i18n.getFlagGraphic();
+        inputStream = language.getFlagGraphic();
         outputStream = getFileManager().createFile(flagGraphic).getOutputStream();
         IOUtils.copy(inputStream, outputStream);
       } catch (final Exception e) {
@@ -150,29 +142,36 @@ public class I18nOperationsImpl implements I18nOperations {
       }
     }
 
-    // Get response types for updating views with new language
-    List<ControllerMVCResponseService> responseTypes = getControllerMVCResponseTypes(true);
-    for (ControllerMVCResponseService responseType : responseTypes) {
-      JavaType responseAnnotationType = responseType.getAnnotation();
-      if (responseAnnotationType != null) {
-        Set<ClassOrInterfaceTypeDetails> responseTypeClassesDetails =
-            getTypeLocationService().findClassesOrInterfaceDetailsWithAnnotation(
-                responseAnnotationType);
+    // Update @WebMvcConfiguration annotation defining defaultLanguage
+    // attribute
+    if (useAsDefault) {
 
-        // We only need one class to get Metadata
-        for (ClassOrInterfaceTypeDetails responseTypeClassDetails : responseTypeClassesDetails) {
-          MemberDetails responseTypDetails =
-              getMemberDetailsScanner().getMemberDetails(getClass().getName(),
-                  responseTypeClassDetails);
-          if (responseTypDetails != null) {
-            List<MemberHoldingTypeDetails> details = responseTypDetails.getDetails();
-            for (MemberHoldingTypeDetails detail : details) {
-              getMetadataService().evictAndGet(detail.getDeclaredByMetadataId());
-            }
-            break;
-          }
+      // Obtain all existing configuration classes annotated with
+      // @RooWebMvcConfiguration
+      Set<ClassOrInterfaceTypeDetails> configurationClasses =
+          getTypeLocationService().findClassesOrInterfaceDetailsWithAnnotation(
+              RooJavaType.ROO_WEB_MVC_CONFIGURATION);
+
+      for (ClassOrInterfaceTypeDetails configurationClass : configurationClasses) {
+        // If configuration class is located in the provided module
+        if (configurationClass.getType().getModule().equals(module.getModuleName())) {
+          ClassOrInterfaceTypeDetailsBuilder cidBuilder =
+              new ClassOrInterfaceTypeDetailsBuilder(configurationClass);
+          AnnotationMetadataBuilder annotation =
+              cidBuilder.getDeclaredTypeAnnotation(RooJavaType.ROO_WEB_MVC_CONFIGURATION);
+          annotation.addStringAttribute("defaultLanguage", language.getLocale().getLanguage());
+
+          // Update configuration class
+          getTypeManagementService().createOrUpdateTypeOnDisk(cidBuilder.build());
+
         }
       }
+
+      LOGGER.log(
+          Level.INFO,
+          String.format("INFO: Default language of your project has been changed to %s.",
+              language.getLanguage()));
+
     }
 
     // Get all controllers and update its message bundles
@@ -180,15 +179,7 @@ public class I18nOperationsImpl implements I18nOperations {
         getTypeLocationService().findClassesOrInterfaceDetailsWithAnnotation(
             RooJavaType.ROO_CONTROLLER);
     for (ClassOrInterfaceTypeDetails controller : controllers) {
-      AnnotationMetadata controllerAnnotation =
-          controller.getAnnotation(RooJavaType.ROO_CONTROLLER);
-      if (controllerAnnotation.getAttribute("entity") != null) {
-        JavaType entity = (JavaType) controllerAnnotation.getAttribute("entity").getValue();
-        ClassOrInterfaceTypeDetails entityCid = getTypeLocationService().getTypeDetails(entity);
-        MemberDetails entityDetails =
-            getMemberDetailsScanner().getMemberDetails(this.getClass().getName(), entityCid);
-        updateI18n(entityDetails, entity, controller.getType().getModule());
-      }
+      getMetadataService().evictAndGet(ControllerMetadata.createIdentifier(controller));
     }
 
     // Add application property
@@ -197,69 +188,16 @@ public class I18nOperationsImpl implements I18nOperations {
   }
 
   /**
-   * Adds the entity properties as labels into i18n messages file 
-   * 
-   * @param entityDetails MemberDetails where entity properties are defined
-   * @param entity JavaType representing the entity binded to controller
+   * Add labels to all installed languages
+   *
+   * @param moduleName
+   * @param labels
    */
-  public void updateI18n(MemberDetails entityDetails, JavaType entity, String moduleName) {
-
-    final Map<String, String> properties = new LinkedHashMap<String, String>();
-
+  @Override
+  public void addOrUpdateLabels(String moduleName, final Map<String, String> labels) {
     final LogicalPath resourcesPath = LogicalPath.getInstance(Path.SRC_MAIN_RESOURCES, moduleName);
     final String targetDirectory = getPathResolver().getIdentifier(resourcesPath, "");
 
-    final String entityName = entity.getSimpleTypeName();
-
-    properties.put(buildLabel(entityName), new JavaSymbolName(entity.getSimpleTypeName()
-        .toLowerCase()).getReadableSymbolName());
-
-    final String pluralResourceId = buildLabel(entity.getSimpleTypeName(), "plural");
-    final String plural = Noun.pluralOf(entity.getSimpleTypeName(), Locale.ENGLISH);
-    properties.put(pluralResourceId, new JavaSymbolName(plural).getReadableSymbolName());
-
-    final List<FieldMetadata> javaTypePersistenceMetadataDetails =
-        getPersistenceMemberLocator().getIdentifierFields(entity);
-
-    if (!javaTypePersistenceMetadataDetails.isEmpty()) {
-      for (final FieldMetadata idField : javaTypePersistenceMetadataDetails) {
-        properties.put(buildLabel(entityName, idField.getFieldName().getSymbolName()), idField
-            .getFieldName().getReadableSymbolName());
-      }
-    }
-
-    for (final FieldMetadata field : entityDetails.getFields()) {
-      final String fieldResourceId = buildLabel(entityName, field.getFieldName().getSymbolName());
-
-      properties.put(fieldResourceId, field.getFieldName().getReadableSymbolName());
-
-      // Add related entity fields
-      if (field.getFieldType().getFullyQualifiedTypeName().equals(Set.class.getName())
-          || field.getFieldType().getFullyQualifiedTypeName().equals(List.class.getName())) {
-
-        // Getting inner type
-        JavaType referencedEntity = field.getFieldType().getBaseType();
-
-        ClassOrInterfaceTypeDetails referencedEntityDetails =
-            getTypeLocationService().getTypeDetails(referencedEntity);
-
-        if (referencedEntityDetails != null
-            && referencedEntityDetails.getAnnotation(RooJavaType.ROO_JPA_ENTITY) != null) {
-
-          for (final FieldMetadata referencedEntityField : getMemberDetailsScanner()
-              .getMemberDetails(this.getClass().getName(), referencedEntityDetails).getFields()) {
-
-            final String referenceEntityFieldResourceId =
-                buildLabel(entityName, field.getFieldName().getSymbolName(), referencedEntityField
-                    .getFieldName().getSymbolName());
-            properties.put(referenceEntityFieldResourceId, referencedEntityField.getFieldName()
-                .getReadableSymbolName());
-          }
-        }
-      }
-    }
-
-    // Update messages bundles of each installed language
     Set<I18n> supportedLanguages = getI18nSupport().getSupportedLanguages();
     for (I18n i18n : supportedLanguages) {
       String messageBundle =
@@ -269,37 +207,25 @@ public class I18nOperationsImpl implements I18nOperations {
               messageBundle);
 
       if (getFileManager().exists(bundlePath)) {
-        getPropFilesManager().addProperties(resourcesPath, messageBundle, properties, true, false);
+        // Adding labels if not exists already
+        getPropFilesManager().addPropertiesIfNotExists(resourcesPath, messageBundle, labels, true,
+            false);
       }
     }
 
-    // Allways update english message bundles
-    getPropFilesManager().addProperties(resourcesPath, "messages.properties", properties, true,
-        false);
-  }
-
-  /**
-   * Builds the label of the specified field by joining its names and adding it to the entity label
-   * 
-   * @param entity the entity name
-   * @param fieldNames list of fields
-   * @return label
-   */
-  private static String buildLabel(String entityName, String... fieldNames) {
-    String label = XmlUtils.convertId("label." + entityName.toLowerCase());
-
-    for (String fieldName : fieldNames) {
-      label = XmlUtils.convertId(label.concat(".").concat(fieldName.toLowerCase()));
-    }
-    return label;
+    // Allways update english message bundles if label not exists already
+    getPropFilesManager().addPropertiesIfNotExists(resourcesPath, "messages.properties", labels,
+        true, false);
   }
 
   /**
    * Return a list of installed languages in the provided application module.
-   * 
-   * @param moduleName the module name to search for installed languages.
+   *
+   * @param moduleName
+   *            the module name to search for installed languages.
    * @return a list with the available languages.
    */
+  @Override
   public List<I18n> getInstalledLanguages(String moduleName) {
 
     final LogicalPath resourcesPath = LogicalPath.getInstance(Path.SRC_MAIN_RESOURCES, moduleName);
@@ -322,20 +248,23 @@ public class I18nOperationsImpl implements I18nOperations {
       }
     }
 
-    // Always add english language as default
+    // Always add English language as default
     installedLanguages.add(new EnglishLanguage());
 
-    return installedLanguages;
+    return Collections.unmodifiableList(installedLanguages);
   }
 
   /**
-   * This method gets all implementations of ControllerMVCResponseService interface to be able
-   * to locate all ControllerMVCResponseService. Uses param installed to obtain only the installed
-   * or not installed response types.
-   * 
-   * @param installed indicates if returned responseType should be installed or not.
-   * 
-   * @return Map with responseTypes identifier and the ControllerMVCResponseService implementation
+   * This method gets all implementations of ControllerMVCResponseService
+   * interface to be able to locate all ControllerMVCResponseService. Uses
+   * param installed to obtain only the installed or not installed response
+   * types.
+   *
+   * @param installed
+   *            indicates if returned responseType should be installed or not.
+   *
+   * @return Map with responseTypes identifier and the
+   *         ControllerMVCResponseService implementation
    */
   private List<ControllerMVCResponseService> getControllerMVCResponseTypes(boolean installed) {
     List<ControllerMVCResponseService> responseTypes =
@@ -370,225 +299,43 @@ public class I18nOperationsImpl implements I18nOperations {
   // Get OSGi services
 
   private TypeLocationService getTypeLocationService() {
-    if (typeLocationService == null) {
-      // Get all Services implement TypeLocationService interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(TypeLocationService.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          typeLocationService = (TypeLocationService) this.context.getService(ref);
-          return typeLocationService;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load TypeLocationService on I18nOperationsImpl.");
-        return null;
-      }
-    } else {
-      return typeLocationService;
-    }
+    return serviceInstaceManager.getServiceInstance(this, TypeLocationService.class);
   }
 
   private I18nSupport getI18nSupport() {
-    if (i18nSupport == null) {
-      // Get all Services implement I18nSupport interface
-      try {
-        ServiceReference<?>[] references =
-            context.getAllServiceReferences(I18nSupport.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          i18nSupport = (I18nSupport) context.getService(ref);
-          return i18nSupport;
-        }
-        return null;
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load I18nSupport on I18nOperationsImpl.");
-        return null;
-      }
-    } else {
-      return i18nSupport;
-    }
+    return serviceInstaceManager.getServiceInstance(this, I18nSupport.class);
   }
 
   private PathResolver getPathResolver() {
-    if (pathResolver == null) {
-      // Get all Services implement PathResolver interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(PathResolver.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          return (PathResolver) this.context.getService(ref);
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load PathResolver on I18nOperationsImpl.");
-        return null;
-      }
-    } else {
-      return pathResolver;
-    }
+    return serviceInstaceManager.getServiceInstance(this, PathResolver.class);
   }
 
   private FileManager getFileManager() {
-    if (fileManager == null) {
-      // Get all Services implement FileManager interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(FileManager.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          return (FileManager) this.context.getService(ref);
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load FileManager on I18nOperationsImpl.");
-        return null;
-      }
-    } else {
-      return fileManager;
-    }
+    return serviceInstaceManager.getServiceInstance(this, FileManager.class);
   }
 
   private ProjectOperations getProjectOperations() {
-    if (projectOperations == null) {
-      // Get all Services implement ProjectOperations interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(ProjectOperations.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          projectOperations = (ProjectOperations) this.context.getService(ref);
-          return projectOperations;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load ProjectOperations on I18nOperationsImpl.");
-        return null;
-      }
-    } else {
-      return projectOperations;
-    }
+    return serviceInstaceManager.getServiceInstance(this, ProjectOperations.class);
   }
 
   private PropFilesManagerService getPropFilesManager() {
-    if (propFilesManagerService == null) {
-      // Get all Services implement PropFileOperations interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(PropFilesManagerService.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          propFilesManagerService = (PropFilesManagerService) this.context.getService(ref);
-          return propFilesManagerService;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load PropFilesManagerService on I18nOperationsImpl.");
-        return null;
-      }
-    } else {
-      return propFilesManagerService;
-    }
-  }
-
-  private PersistenceMemberLocator getPersistenceMemberLocator() {
-    if (persistenceMemberLocator == null) {
-      // Get all Services implement TypeLocationService interface
-      try {
-        ServiceReference<?>[] references =
-            context.getAllServiceReferences(PersistenceMemberLocator.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          return (PersistenceMemberLocator) context.getService(ref);
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load PersistenceMemberLocator on AbstractIdMetadataProvider.");
-        return null;
-      }
-    } else {
-      return persistenceMemberLocator;
-    }
-  }
-
-  private MemberDetailsScanner getMemberDetailsScanner() {
-    if (memberDetailsScanner == null) {
-      // Get all Services implement MemberDetailsScanner interface
-      try {
-        ServiceReference<?>[] references =
-            context.getAllServiceReferences(MemberDetailsScanner.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          memberDetailsScanner = (MemberDetailsScanner) context.getService(ref);
-          return memberDetailsScanner;
-        }
-        return null;
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load MemberDetailsScanner on PushInOperationsImpl.");
-        return null;
-      }
-    } else {
-      return memberDetailsScanner;
-    }
+    return serviceInstaceManager.getServiceInstance(this, PropFilesManagerService.class);
   }
 
   public ApplicationConfigService getApplicationConfigService() {
-    if (applicationConfigService == null) {
-      // Get all Services implement ApplicationConfigService interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(ApplicationConfigService.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          applicationConfigService = (ApplicationConfigService) this.context.getService(ref);
-          return applicationConfigService;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load ApplicationConfigService on ControllerOperationsImpl.");
-        return null;
-      }
-    } else {
-      return applicationConfigService;
-    }
+    return serviceInstaceManager.getServiceInstance(this, ApplicationConfigService.class);
   }
 
   public MetadataService getMetadataService() {
-    if (metadataService == null) {
-      // Get all Services implement MetadataService interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(MetadataService.class.getName(), null);
+    return serviceInstaceManager.getServiceInstance(this, MetadataService.class);
+  }
 
-        for (ServiceReference<?> ref : references) {
-          return (MetadataService) this.context.getService(ref);
-        }
+  public TypeManagementService getTypeManagementService() {
+    return serviceInstaceManager.getServiceInstance(this, TypeManagementService.class);
+  }
 
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load MetadataService on SecurityOperationsImpl.");
-        return null;
-      }
-    } else {
-      return metadataService;
-    }
+  public PluralService getPluralService() {
+    return serviceInstaceManager.getServiceInstance(this, PluralService.class);
   }
 
 }

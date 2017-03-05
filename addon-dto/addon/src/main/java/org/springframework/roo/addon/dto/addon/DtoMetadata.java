@@ -3,11 +3,14 @@ package org.springframework.roo.addon.dto.addon;
 import java.lang.reflect.Modifier;
 import java.util.List;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
 import org.springframework.roo.classpath.PhysicalTypeIdentifierNamingUtils;
 import org.springframework.roo.classpath.PhysicalTypeMetadata;
 import org.springframework.roo.classpath.details.ConstructorMetadataBuilder;
 import org.springframework.roo.classpath.details.FieldMetadata;
+import org.springframework.roo.classpath.details.annotations.AnnotationMetadata;
+import org.springframework.roo.classpath.details.annotations.AnnotationMetadataBuilder;
 import org.springframework.roo.classpath.itd.AbstractItdTypeDetailsProvidingMetadataItem;
 import org.springframework.roo.classpath.itd.InvocableMemberBodyBuilder;
 import org.springframework.roo.metadata.MetadataIdentificationUtils;
@@ -15,7 +18,7 @@ import org.springframework.roo.model.*;
 import org.springframework.roo.project.LogicalPath;
 
 /**
- * Metadata for {@link RooAudit}.
+ * Metadata for {@link RooDTO}.
  * <p>
  * 
  * @author Sergio Clares
@@ -30,6 +33,7 @@ public class DtoMetadata extends AbstractItdTypeDetailsProvidingMetadataItem {
   private final DtoAnnotationValues annotationValues;
   private final List<FieldMetadata> fields;
   private final JavaSymbolName serialField = new JavaSymbolName("serialVersionUID");
+  private final JavaType type;
 
   public static String createIdentifier(final JavaType javaType, final LogicalPath path) {
     return PhysicalTypeIdentifierNamingUtils.createIdentifier(PROVIDES_TYPE_STRING, javaType, path);
@@ -73,6 +77,7 @@ public class DtoMetadata extends AbstractItdTypeDetailsProvidingMetadataItem {
 
     this.annotationValues = annotationValues;
     this.fields = fields;
+    this.type = governorPhysicalTypeMetadata.getType();
 
     if (annotationValues.getImmutable()) {
       ConstructorMetadataBuilder constructorMetadata = getConstructor();
@@ -80,6 +85,9 @@ public class DtoMetadata extends AbstractItdTypeDetailsProvidingMetadataItem {
         ensureGovernorHasConstructor(constructorMetadata);
       }
     }
+
+    // ROO-3868: New entity visualization support using a new format annotation
+    ensureGovernorIsAnnotated(new AnnotationMetadataBuilder(getEntityFormatAnnotation()));
 
     // Build ITD
     itdTypeDetails = builder.build();
@@ -110,6 +118,30 @@ public class DtoMetadata extends AbstractItdTypeDetailsProvidingMetadataItem {
     constructorBuilder.setBodyBuilder(bodyBuilder);
 
     return constructorBuilder;
+  }
+
+  /**
+   * Generates the Springlets `@EntityFormat` annotation to be applied to the dto
+   *
+   * @return AnnotationMetadata
+   */
+  private AnnotationMetadata getEntityFormatAnnotation() {
+    String expressionAttribute = this.annotationValues.getFormatExpression();
+    String messageAttribute = this.annotationValues.getFormatMessage();
+
+    final AnnotationMetadataBuilder entityFormatBuilder =
+        new AnnotationMetadataBuilder(SpringletsJavaType.SPRINGLETS_ENTITY_FORMAT);
+
+    // Check for each attribute individually
+    if (StringUtils.isNotBlank(expressionAttribute)) {
+      entityFormatBuilder.addStringAttribute("value", expressionAttribute);
+
+    }
+    if (StringUtils.isNotBlank(messageAttribute)) {
+      entityFormatBuilder.addStringAttribute("message", messageAttribute);
+    }
+
+    return entityFormatBuilder.build();
   }
 
 }

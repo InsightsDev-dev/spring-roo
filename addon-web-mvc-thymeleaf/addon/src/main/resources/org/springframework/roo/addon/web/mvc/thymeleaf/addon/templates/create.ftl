@@ -1,259 +1,243 @@
 <#import "fields/input-text.ftl" as text>
+<#import "fields/input-number.ftl" as number>
 <#import "fields/input-date.ftl" as date>
 <#import "fields/reference.ftl" as reference>
 <#import "fields/checkbox.ftl" as checkbox>
 <#import "fields/enum.ftl" as enum>
 <!DOCTYPE html>
-<html data-layout-decorator="layouts/default-layout">
-<head>
-<meta charset="utf-8" data-th-remove="all" />
-<meta http-equiv="X-UA-Compatible" content="IE=edge" data-th-remove="all" />
-<meta name="viewport" content="width=device-width, initial-scale=1"
-  data-th-remove="all" />
-<meta name="description"
-  content="${projectName}"
-  data-th-remove="all" />
-<meta name="author"
-  content="Spring Roo"
-  data-th-remove="all" />
-<link data-th-href="@{/public/img/favicon.ico}" data-th-remove="all" rel="icon"
-  href="../../static/public/img/favicon.ico" />
+<html lang="en" data-layout-decorate="~{layouts/default-layout}">
+  <#if userManagedComponents?has_content && userManagedComponents["head"]??>
+  ${userManagedComponents["head"]}
+  <#else>
+  <head id="head">
 
-<link rel="shortcut icon" href="../../static/public/img/favicon.ico"
-       data-th-remove="all" />
+    <title data-th-text="${r"#{"}label_create_entity(${r"#{"}${entityLabel}})}">
+      Create ${entityName} - ${projectName} - SpringRoo Application</title>
 
-<link rel="apple-touch-icon" href="../../static/public/img/apple-touch-icon.png"
-       data-th-remove="all" />
-
-<title data-th-text="${r"#{"}label_create_entity(${r"#{"}${entityLabel}${r"}"})${r"}"}">${projectName}
-  - Create ${entityName}</title>
-
-
-    <!-- Bootstrap -->
+    <!-- DateTimePicker -->
     <link rel="stylesheet" type="text/css"
-      href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.css"
-      data-th-remove="all"></link>
+      href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.4/build/jquery.datetimepicker.min.css"
+      data-th-href="@{/webjars/datetimepicker/build/jquery.datetimepicker.min.css}" />
 
-    <!-- Font Awesome -->
-    <link rel="stylesheet" type="text/css" 
-       href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css"/>
+  </head>
+  </#if>
 
-    <!-- Bootswatch CSS custom -->
-    <link rel="stylesheet" type="text/css"
-      href="../static/public/css/theme.css"
-      data-th-remove="all" />
+  <#if userManagedComponents?has_content && userManagedComponents["body"]??>
+    ${userManagedComponents["body"]}
+  <#else>
+  <body id="body">
 
-    <!-- Roo CSS -->
-    <link rel="stylesheet" type="text/css"
-      href="../static/public/css/springroo.css"
-      data-th-remove="all" />
-
-    <!--[if lt IE 9]>
-       <script src="/public/js/html5shiv.min.js"></script>
-        <script src="/public/js/respond.min.js"></script>
-    <![endif]-->
-    
-<!-- Select2 -->
-<link rel="stylesheet" type="text/css"
-  data-th-href="@{/public/css/select2.css}"
-  href="../../static/public/css/select2.css" />
-<link rel="stylesheet" type="text/css"
-  data-th-href="@{/public/css/select2-bootstrap.css}"
-  href="../../static/public/css/select2-bootstrap.css" />
-  
-  
-<!-- DateTimePicker -->
-<link rel="stylesheet" type="text/css"
-    data-th-href="@{/public/css/jquery.datetimepicker.css}"
-    href="../../static/public/css/jquery.datetimepicker.css" />
-<script data-th-src="@{/public/js/jquery.min.js}"
-    src="../../static/public/js/jquery.min.js"></script>
-
-</head>
-<body>
-
-
-  <!--START CONTAINER-->
-  <div class="container bg-container">
-
-    <!-- HEADER -->
     <header role="banner">
-
-      <div class="bg-header">
-        <div class="organization-logo">
-          <a
-            title="${projectName}"
-            href="/"><img
-            alt="${projectName}"
-            src="../../static/public/img/logo_spring_roo.png" /></a>
-        </div>
-        <div class="application-name">
-            <a href="/" data-th-href="@{/}">${projectName}</a>
-        </div>
-      </div>
-
-      <!-- MAIN MENU -->
-      <nav class="navbar navbar-default">
-        <div class="container-fluid">
-
-	  <!-- collapsed menu button -->
-          <div class="navbar-header">
-            <button type="button" class="navbar-toggle collapsed"
-              data-toggle="collapse" data-target="#bs-example-navbar-collapse-1"
-              aria-expanded="false">
-              <span class="sr-only">Dropdown</span>
-              <span class="icon-bar"></span>
-              <span class="icon-bar"></span>
-              <span class="icon-bar"></span>
-            </button>
-            <a class="navbar-brand" href="#">Main Menu</a>
-	  </div>
-
-          <div id="bs-example-navbar-collapse-1" class="navbar-collapse collapse">
-            <!-- Main menu -->
-            <div class="row">
-              <ul class="nav navbar-nav">
-                <li class="active"><a href="#">Active Menu 1</a></li>
-                <li><a href="#">Menu 2</a></li>
-                <li class="dropdown"><a href="#" class="dropdown-toggle" 
-                  data-toggle="dropdown" role="button" aria-haspopup="true" 
-                  aria-expanded="false">Dropdown Menu 3<span class="caret"></span></a>
-                  <ul class="dropdown-menu">
-                    <li><a href="#">Submenu 1</a></li>
-                    <li><a href="#">Submenu 2</a></li>
-                    <li><a href="#">Submenu 3</a></li>
-                  </ul>
-                </li>
-              </ul>
-          </div>
-
-          <!-- User Menu -->
-          <div class="container upper-nav">
-                <ul class="nav navbar-nav navbar-right session">
-                  <li><span class="glyphicon glyphicon-user" aria-hidden="true"></span>
-                      <span data-th-text="${r"#{"}label_user${r"}"}">User</span></li>
-                  <li data-th-text="${r"#{"}label_last_access(00-00-0000)${r"}"}">
-                       <span class="glyphicon glyphicon-calendar" aria-hidden="true"></span>Last Access: 00-00-0000</li>
-                  <li><button type="submit" class="exit"><span class="glyphicon glyphicon-off" aria-hidden="true"></span>
-                       <span data-th-text="${r"#{"}label_exit${r"}"}">Exit</span></button></li>
-                </ul>
-                <ul class="nav navbar-nav navbar-right links">
-                  <li><a href="#"><span class="glyphicon glyphicon-envelope" aria-hidden="true"></span>
-                      <span data-th-text="${r"#{"}label_contact${r"}"}">Contact</span></a></li>
-                  <li><a href="#"><span class="glyphicon glyphicon-question-sign" aria-hidden="true"></span>
-                      <span data-th-text="${r"#{"}label_help${r"}"}">Help</span></a></li>
-                </ul>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <!-- Content replaced by layout of the page displayed -->
     </header>
-    <!-- END HEADER -->
 
-    <!--START CONTENT-->
-    <section data-layout-fragment="content">
-      <div class="container-fluid content">
+    <!-- CONTAINER -->
+    <div class="container bg-container">
+      <!-- CONTENT -->
+      <!--
+        Only the inner content of the following tag "section" is included
+        within the template, in the section "content"
+      -->
+      <section data-layout-fragment="content">
+        <div class="container-fluid content" data-th-with="collectionLink=${r"${@"}linkBuilder.of('${mvcCollectionControllerName}')}">
 
-        <h1 data-th-text="${r"#{"}label_create_entity(${r"#{"}${entityLabel}${r"}"})${r"}"}">Create ${entityName}</h1>
+          <h1 data-th-text="${r"#{"}label_create_entity(${r"#{"}${entityLabel}})}">Create ${entityName}</h1>
 
-        <!--START FORM-->
-        <form class="form-horizontal" method="POST" data-th-object="${modelAttribute}"
-          data-th-action="@{${controllerPath}}">
+          <!-- FORM -->
+          <form class="form-horizontal validate" method="POST" data-th-object="${modelAttribute}"
+            data-th-action="@{${r"${"}collectionLink.to('create').with('${modelAttributeName}', ${modelAttributeName}.${identifierField})}}">
 
-          <fieldset id="containerFields">
-            <legend data-th-text="${r"#{"}label_data_entity(${r"#{"}${entityLabel}${r"}"})${r"}"}">${entityName} data </legend>
+            <fieldset id="containerFields">
+              <legend class="sr-only" data-th-text="${r"#{"}label_data_entity(${r"#{"}${entityLabel}})}">${entityName} data </legend>
 
-            <#list fields as field>
-                <#if field.type == "TEXT">
-                    <@text.input label=field.label fieldName=field.fieldName z=field.z />
-                <#elseif field.type == "DATE">
-                    <@date.input label=field.label 
-                    fieldName=field.fieldName
-                    z=field.z
-                    format=field.configuration.format />
-                <#elseif field.type == "REFERENCE">
-                    <@reference.input label=field.label 
-                        fieldName=field.fieldName 
-                        z=field.z
-                        referencedEntity=field.configuration.referencedEntity
-                        identifierField=field.configuration.identifierField
-                        referencedPath=field.configuration.referencedPath
-                        fieldOne=field.configuration.fieldOne
-                        fieldTwo=field.configuration.fieldTwo />
-                <#elseif field.type == "ENUM">
-                    <@enum.input label=field.label 
-                    fieldName=field.fieldName
-                    z=field.z
-                    items=field.configuration.items />                
-                <#elseif field.type == "BOOLEAN">
-                    <@checkbox.input label=field.label fieldName=field.fieldName z=field.z />                
-                </#if>
-            </#list>
+              <#list fields as field>
+                  <#if field.userManaged>
+                      ${field.codeManaged}
+                  <#elseif field.type == "TEXT">
+                      <@text.input label=field.label fieldName=field.fieldName fieldId=field.fieldId z=field.z width=6 required=field.configuration.required maxLength=field.configuration.maxLength />
+                  <#elseif field.type == "NUMBER">
+                      <@number.input label=field.label fieldName=field.fieldName fieldId=field.fieldId
+                      		z=field.z width=3 required=field.configuration.required
+                      		min=field.configuration.min max=field.configuration.max
+                      		digitsFraction=field.configuration.digitsFraction
+                      		digitsInteger=field.configuration.digitsInteger />
+                  <#elseif field.type == "DATE">
+                      <@date.input label=field.label
+                          fieldName=field.fieldName
+                          fieldId=field.fieldId
+                          z=field.z
+                          format=field.configuration.format required=field.configuration.required />
+                  <#elseif field.type == "REFERENCE">
+                      <@reference.input label=field.label
+                          fieldName=field.fieldName
+                          fieldId=field.fieldId
+                          z=field.z
+                          referencedEntity=field.configuration.referencedEntity
+                          identifierField=field.configuration.identifierField
+                          select2MethodName=field.configuration.select2MethodName
+                          select2ControllerName=field.configuration.select2ControllerName
+                          required=field.configuration.required />
+                  <#elseif field.type == "ENUM">
+                      <@enum.input label=field.label
+                          fieldName=field.fieldName
+                          fieldId=field.fieldId
+                          z=field.z
+                          items=field.configuration.items required=field.configuration.required />
+                  <#elseif field.type == "BOOLEAN">
+                      <@checkbox.input label=field.label fieldName=field.fieldName fieldId=field.fieldId z=field.z />
+                  </#if>
+              </#list>
+            </fieldset>
 
-            <!-- FORM BUTTONS -->
-            <div class="form-group">
-              <div class="col-md-12">
-                <div class="pull-left">
-                  <!-- TODO IE8 -->
-                  <button type="reset" class="btn btn-default"
-                    onclick="location.href='list.html'"
-                    data-th-onclick="'location.href=\'' + @{${controllerPath}} + '\''" 
-                    data-th-text="${r"#{"}label_reset${r"}"}">Cancel</button>
-                </div>
-                <div class="pull-right">
-                  <input type="submit" value="Accept" data-th-value="${r"#{"}label_submit${r"}"}" class="btn btn-primary" />
+              <#if compositeRelationFields?has_content>
+                <#list compositeRelationFields?keys as referencedField>
+                  <fieldset id="${referencedField}FieldSet">
+                    <#list compositeRelationFields[referencedField] as field>
+                      <#if field?index == 0>
+                        <legend data-th-text="${r"#{"}label_data_entity(${r"#{"}${field.legendLabel}})}">${field.entityName} data </legend>
+                      </#if>
+
+                      <#if field.userManaged>
+                        ${field.codeManaged}
+                      <#elseif field.type == "TEXT">
+                        <@text.input label=field.label fieldName=field.fieldName fieldId=field.fieldId z=field.z width=6 required=field.configuration.required maxLength=field.configuration.maxLength />
+                      <#elseif field.type == "NUMBER">
+                        <@number.input label=field.label fieldName=field.fieldName fieldId=field.fieldId z=field.z width=3 required=field.configuration.required min=field.configuration.min max=field.configuration.max digitsFraction=field.configuration.digitsFraction digitsInteger=field.configuration.digitsInteger />
+                      <#elseif field.type == "DATE">
+                        <@date.input label=field.label
+                          fieldName=field.fieldName
+                          fieldId=field.fieldId
+                          z=field.z
+                          format=field.configuration.format required=field.configuration.required />
+                      <#elseif field.type == "REFERENCE">
+                        <@reference.input label=field.label
+                          fieldName=field.fieldName
+                          fieldId=field.fieldId
+                          z=field.z
+                          referencedEntity=field.configuration.referencedEntity
+                          identifierField=field.configuration.identifierField
+                          select2MethodName=field.configuration.select2MethodName
+                          select2ControllerName=field.configuration.select2ControllerName
+                          required=field.configuration.required />
+                      <#elseif field.type == "ENUM">
+                        <@enum.input label=field.label
+                          fieldName=field.fieldName
+                          fieldId=field.fieldId
+                          z=field.z
+                          items=field.configuration.items required=field.configuration.required />
+                      <#elseif field.type == "BOOLEAN">
+                        <@checkbox.input label=field.label fieldName=field.fieldName fieldId=field.fieldId z=field.z />
+                      </#if>
+                    </#list>
+                  </fieldset>
+                </#list>
+              </#if>
+
+              <!-- buttons form -->
+              <div class="form-group">
+                <div class="col-md-9 col-md-offset-3">
+                    <button type="submit" class="btn btn-primary" data-th-text="${r"#{"}label_save}">Save</button>
+                    <button type="reset" class="btn btn-default"
+                      onclick="location.href='list.html'"
+                      data-th-onclick="'location.href=\'' + @{${"${"}collectionLink.to('list')}} + '\''"
+                      data-th-text="${r"#{"}label_reset}">Cancel</button>
                 </div>
               </div>
-            </div>
 
-          </fieldset>
-        </form>
-        <!--END FORM-->
+          </form>
+          <!-- /FORM -->
 
-      </div>
-      <!--END CONTENT-->
+        </div>
 
-    </section>
-
+      </section>
+      <!-- /CONTENT -->
   </div>
-  <!--END CONTAINER-->
+  <!-- /CONTAINER -->
 
   <footer class="container">
-    <p class="text-right">© Powered By Spring Roo</p>
+    <!-- Content replaced by layout of the page displayed -->
   </footer>
 
-  <!-- Bootstrap core JavaScript
-    ================================================== -->
-    <!-- JQuery -->
-    <script type="text/javascript" charset="utf8"
-      src="https://code.jquery.com/jquery-1.12.3.js"></script>
-
-    <!-- Bootstrap -->
-    <script type="text/javascript"
-      src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.js"></script>
-
-  <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
-  <script data-th-remove="all" data-th-src="@{/public/js/bootstrap.min.js}"
-    src="../../static/public/js/ie10-viewport-bug-workaround.js"></script>
-    
-    <!-- Application -->
-    <script data-th-remove="all" data-th-src="@{/public/js/main.js}"
-        src="../../static/public/js/main.js"></script>
-    
+  <!-- JavaScript
+  ================================================== -->
+  <!-- Placed at the end of the document so that the pages load faster -->
+  <!-- JavaScript loaded by layout of the page displayed -->
+  <!--
+       Only the inner content of the following tag "javascript" is included
+       within the template, in the div "javascript"
+      -->
   <div data-layout-fragment="javascript">
-      <!-- Moment.js -->
-      <script data-th-src="@{/public/js/moment.js}" 
-        src="../../static/public/js/moment.js"></script>
-      <script data-th-src="@{/public/js/moment-} + ${r"${application_locale}"} + .js" 
-        src="../../static/public/js/moment-en.js"></script>
-      <!-- Select2 -->
-      <script src="../../static/public/js/select2.full.js" data-th-src="@{/public/js/select2.full.js}"></script>
-      <script src="../../static/public/js/select2.full-es.js" data-th-src="@{/public/js/select2.full-es.js}"></script>
-      <script src="../../static/public/js/select2-defaults.js" data-th-src="@{/public/js/select2-defaults.js}"></script>
-      <!-- DateTime Picker -->
-      <script src="../../static/public/js/jquery.datetimepicker.full.min.js" data-th-src="@{/public/js/jquery.datetimepicker.full.min.js}"></script>
-      <script src="../../static/public/js/datetimepicker-defaults.js" data-th-src="@{/public/js/datetimepicker-defaults.js}"></script>
-  </div>
 
-</body>
+    <!-- DateTimePicker -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.4/build/jquery.datetimepicker.full.min.js"
+      data-th-src="@{/webjars/datetimepicker/build/jquery.datetimepicker.full.min.js}"></script>
+    <script src="../../static/public/js/datetimepicker-defaults.js"
+      data-th-src="@{/public/js/datetimepicker-defaults.js}"></script>
+
+    <!-- jquery.inputmask -->
+    <script
+       src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputmask/3.3.1/jquery.inputmask.bundle.min.js"
+       data-th-src="@{/webjars/jquery.inputmask/min/jquery.inputmask.bundle.min.js}"></script>
+    <script type="text/javascript" data-th-inline="javascript">
+					(function(jQuery) {
+						jQuery(document)
+								.ready(
+										function() {
+											Inputmask
+													.extendAliases({
+														'numeric' : {
+															'groupSeparator' : /*[[${r"#{"}label_inputmask_groupSeparator}]]*/'.',
+															'radixPoint' : /*[[${r"#{"}label_inputmask_radixPoint}]]*/','
+														},
+														'currency' : {
+															'prefix' : /*[[${r"#{"}label_inputmask_prefix}]]*/'',
+															'suffix' : /*[[${r"#{"}label_inputmask_suffix}]]*/' €'
+														}
+													});
+										});
+					})(jQuery);
+  		</script>
+    <script src="../../static/public/js/inputmask-defaults.js"
+      data-th-src="@{/public/js/inputmask-defaults.js}"></script>
+
+    <!-- JQuery Validation -->
+    <script
+      src="http://ajax.aspnetcdn.com/ajax/jquery.validate/1.15.0/jquery.validate.min.js"
+      data-th-src="@{/webjars/jquery-validation/dist/jquery.validate.min.js}">
+		  </script>
+    <script
+      src="http://ajax.aspnetcdn.com/ajax/jquery.validate/1.15.0/additional-methods.min.js"
+      data-th-src="@{/webjars/jquery-validation/dist/additional-methods.min.js}">
+			</script>
+    <script
+      src="http://ajax.aspnetcdn.com/ajax/jquery.validate/1.15.0/localization/messages_es.js"
+      data-th-src="@{/webjars/jquery-validation/src/localization/messages_}+${r"${#"}locale.language}+'.js'"
+      data-th-if="${r"${#"}locale.language} != 'en'">
+			</script>
+    <script src="../../static/public/js/validation-defaults.js"
+      data-th-src="@{/public/js/validation-defaults.js}">
+			</script>
+
+    <script type="text/javascript" data-th-inline="javascript">
+					(function(jQuery) {
+						jQuery(document)
+								.ready(
+										function() {
+											jQuery
+													.extend(
+															jQuery.validator.messages,
+															{
+																'dateformat' : /*[[${r"#{"}error_invalid_date}]]*/'Please enter a correct date/time',
+																'inputmask' : /*[[${r"#{"}error_invalid_maskValue}]]*/'Please enter a valid value',
+															});
+										});
+					})(jQuery);
+		  </script>
+
+    </div>
+
+  </body>
+  </#if>
+
 </html>

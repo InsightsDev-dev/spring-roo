@@ -17,7 +17,6 @@ import org.osgi.framework.ServiceReference;
 import org.osgi.service.component.ComponentContext;
 import org.springframework.roo.model.JavaPackage;
 import org.springframework.roo.process.manager.FileManager;
-import org.springframework.roo.project.ApplicationContextOperations;
 import org.springframework.roo.project.GAV;
 import org.springframework.roo.project.Path;
 import org.springframework.roo.project.PathResolver;
@@ -33,9 +32,10 @@ import org.w3c.dom.Node;
 /**
  * Convenient superclass for core or third-party addons to implement a
  * {@link PackagingProvider}. Uses the "Template Method" GoF pattern.
- * 
+ *
  * @author Andrew Swan
  * @author Paula Navarro
+ * @author Juan Carlos García
  * @since 1.2.0
  */
 @Component(componentAbstract = true)
@@ -49,9 +49,9 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
   }
 
   private static final String DEFAULT_VERSION = "0.1.0.BUILD-SNAPSHOT";
-  private static final String JAVA_VERSION_PLACEHOLDER = "JAVA_VERSION";
-  private static final String ASPECTJ_VERSION_PLACEHOLDER = "ASPECTJ_VERSION";
+  private static final String JAVA_PRODUCT_VERSION_PLACEHOLDER = "JAVA_PRODUCT_VERSION";
   private static final String ASPECTJ_PLUGIN_VERSION_PLACEHOLDER = "ASPECTJ_PLUGIN_VERSION";
+  private static final String ASCIIDOCLET_PLUGIN_VERSION_PLACEHOLDER = "ASCIIDOCLET_PLUGIN_VERSION";
   protected static final Logger LOGGER = HandlerUtils.getLogger(PackagingProvider.class);
   /**
    * The name of the POM property that stores the packaging provider's ID.
@@ -60,7 +60,6 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
 
   private static final String VERSION_ELEMENT = "version";
 
-  protected ApplicationContextOperations applicationContextOperations;
   protected FileManager fileManager;
   protected PathResolver pathResolver;
   private final String id;
@@ -70,7 +69,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
 
   /**
    * Constructor
-   * 
+   *
    * @param id the unique ID of this packaging type, see
    *            {@link PackagingProvider#getId()}
    * @param name the name of this type of packaging as used in the POM
@@ -88,7 +87,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
 
   /**
    * Constructor
-   * 
+   *
    * @param id the unique ID of this packaging type, see
    *            {@link PackagingProvider#getId()}
    * @param name the name of this type of packaging as used in the POM
@@ -135,7 +134,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
    * <p>
    * This implementation sets up the Log4j configuration file for the root
    * module.
-   * 
+   *
    * @param topLevelPackage
    * @param module the unqualified name of the module being created (empty
    *            means the root or only module)
@@ -159,12 +158,12 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
    * <li>sets the artifactId to the result of {@link #getArtifactId}</li>
    * <li>sets the packaging to the result of {@link #getName()}</li>
    * <li>sets the project name to the result of {@link #getProjectName}</li>
-   * <li>replaces all occurrences of {@link #JAVA_VERSION_PLACEHOLDER} with
+   * <li>replaces all occurrences of {@link #JAVA_PRODUCT_VERSION_PLACEHOLDER} with
    * the given Java version</li>
    * </ul>
    * This method makes as few assumptions about the POM template as possible,
    * to make life easier for anyone writing a {@link PackagingProvider}.
-   * 
+   *
    * @param topLevelPackage the new project or module's top-level Java package
    *            (required)
    * @param projectName the project name provided by the user (can be blank)
@@ -226,25 +225,11 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
         DomUtils.createChildElement(VERSION_ELEMENT, root, pom).setTextContent(DEFAULT_VERSION);
       }
 
-      // Java versions
-      final List<Element> versionElements =
-          XmlUtils.findElements("//*[.='" + JAVA_VERSION_PLACEHOLDER + "']", root);
-      for (final Element versionElement : versionElements) {
+      // Java product version (8, 7 ,6)
+      final List<Element> javaProductVersionElements =
+          XmlUtils.findElements("//*[.='" + JAVA_PRODUCT_VERSION_PLACEHOLDER + "']", root);
+      for (final Element versionElement : javaProductVersionElements) {
         versionElement.setTextContent(javaVersion);
-      }
-
-      // AspectJ versions
-      final List<Element> aspectJVersionElements =
-          XmlUtils.findElements("//*[.='" + ASPECTJ_VERSION_PLACEHOLDER + "']", root);
-      for (final Element aspectJVersion : aspectJVersionElements) {
-        aspectJVersion.setTextContent("1.8.8");
-        //        if ("1.8".equals(javaVersion)) {
-        //          aspectJVersion.setTextContent("1.8.8");
-        //        } else if ("1.7".equals(javaVersion)) {
-        //          aspectJVersion.setTextContent("1.8.8");
-        //        } else if ("1.6".equals(javaVersion)) {
-        //          aspectJVersion.setTextContent("1.8.8");
-        //        }
       }
 
       // AspectJ Plugin Versions
@@ -260,6 +245,14 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
         //          aspectJPluginVersion.setTextContent("1.8");
         //        }
       }
+
+      // Asciidoclet Plugin versions
+      final List<Element> asciidocletPluginVersionElements =
+          XmlUtils.findElements("//*[.='" + ASCIIDOCLET_PLUGIN_VERSION_PLACEHOLDER + "']", root);
+      for (final Element versionElement : asciidocletPluginVersionElements) {
+        versionElement.setTextContent("1.5.4");
+      }
+
     }
 
     // packaging
@@ -279,7 +272,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
    * <code>&lt;artifactId&gt;</code> element. This implementation simply
    * delegates to {@link #getProjectName}. Subclasses can override this method
    * to use a different strategy.
-   * 
+   *
    * @param nullableProjectName the project name entered by the user (can be
    *            blank)
    * @param module the name of the module being created (blank for the root
@@ -301,7 +294,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
   /**
    * Returns the fully-qualified name of the given module, relative to the
    * currently focused module.
-   * 
+   *
    * @param moduleName can be blank for the root or only module
    * @param projectOperations
    * @return
@@ -322,7 +315,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
    * Returns the groupId of the project or module being created. This
    * implementation simply uses the fully-qualified name of the given Java
    * package. Subclasses can override this method to use a different strategy.
-   * 
+   *
    * @param topLevelPackage the new project or module's top-level Java package
    *            (required)
    * @return
@@ -338,7 +331,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
   /**
    * Returns the package-relative path to this {@link PackagingProvider}'s POM
    * template.
-   * 
+   *
    * @return a non-blank path
    */
   String getPomTemplate() {
@@ -348,7 +341,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
   /**
    * Returns the package-relative path to this {@link PackagingProvider}'s POM
    * module template.
-   * 
+   *
    * @return a non-blank path
    */
   String getPomModuleTemplate() {
@@ -360,7 +353,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
    * element. This implementation uses the given project name if not blank,
    * otherwise the last element of the given Java package. Subclasses can
    * override this method to use a different strategy.
-   * 
+   *
    * @param nullableProjectName the project name entered by the user (can be
    *            blank)
    * @param module the name of the module being created (blank for the root
@@ -378,7 +371,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
 
   /**
    * Sets the Maven groupIds of the parent and/or project as necessary
-   * 
+   *
    * @param projectGroupId the project's groupId (required)
    * @param parentPom the Maven coordinates of the parent POM (can be
    *            <code>null</code>)
@@ -421,7 +414,7 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
    * {@value #ROO_PACKAGING_PROVIDER_PROPERTY}. Subclasses can override this
    * method, but be aware that Roo needs some way of working out from a given
    * <code>pom.xml</code> file which {@link PackagingProvider} should be used.
-   * 
+   *
    * @param pom the DOM document for the POM being created
    */
   protected void setPackagingProviderId(final Document pom) {
@@ -488,28 +481,6 @@ public abstract class AbstractPackagingProvider implements PackagingProvider {
       }
     } else {
       return pathResolver;
-    }
-  }
-
-  public ApplicationContextOperations getApplicationContextOperations() {
-    if (applicationContextOperations == null) {
-      // Get all Services implement ApplicationContextOperations interface
-      try {
-        ServiceReference<?>[] references =
-            context.getAllServiceReferences(ApplicationContextOperations.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          return (ApplicationContextOperations) context.getService(ref);
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load ApplicationContextOperations on AbstractPackagingProvider.");
-        return null;
-      }
-    } else {
-      return applicationContextOperations;
     }
   }
 }

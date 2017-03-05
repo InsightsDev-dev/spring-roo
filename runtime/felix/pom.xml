@@ -5,12 +5,16 @@
     <parent>
         <groupId>org.springframework.roo</groupId>
         <artifactId>org.springframework.roo.osgi.bundle</artifactId>
-        <version>2.0.0.BUILD-SNAPSHOT</version>
+        <version>2.0.0.RC1</version>
         <relativePath>../../runtime/osgi-bundle</relativePath>
     </parent>
     <artifactId>org.springframework.roo.felix</artifactId>
     <packaging>bundle</packaging>
     <name>Spring Roo - Runtime - Felix Interoperability</name>
+
+    <properties>
+        <main.basedir>${basedir}/../..</main.basedir>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -36,6 +40,10 @@
         <dependency>
             <groupId>org.apache.felix</groupId>
             <artifactId>org.apache.felix.bundlerepository</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.servicemix.bundles</groupId>
+            <artifactId>org.apache.servicemix.bundles.freemarker</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
@@ -79,8 +87,4 @@
             </plugin>
         </plugins>
     </build>
-    
-    <properties>
-        <main.basedir>${basedir}/../..</main.basedir>
-    </properties>
 </project>

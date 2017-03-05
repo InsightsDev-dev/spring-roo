@@ -13,6 +13,9 @@ import org.springframework.roo.classpath.antlrjavaparser.JavaParserUtils;
 import org.springframework.roo.classpath.details.FieldMetadata;
 import org.springframework.roo.classpath.details.FieldMetadataBuilder;
 import org.springframework.roo.classpath.details.annotations.AnnotationMetadata;
+import org.springframework.roo.classpath.details.comments.CommentStructure;
+import org.springframework.roo.classpath.details.comments.CommentStructure.CommentLocation;
+import org.springframework.roo.classpath.details.comments.JavadocComment;
 import org.springframework.roo.model.Builder;
 import org.springframework.roo.model.JavaSymbolName;
 import org.springframework.roo.model.JavaType;
@@ -37,6 +40,7 @@ import com.github.antlrjavaparser.api.type.Type;
  * 
  * @author Ben Alex
  * @author Juan Carlos García
+ * @author Sergio Clares
  * @since 1.0
  */
 public class JavaParserFieldMetadataBuilder implements Builder<FieldMetadata> {
@@ -197,6 +201,28 @@ public class JavaParserFieldMetadataBuilder implements Builder<FieldMetadata> {
       } else {
         JavaParserCommentMetadataBuilder.updateCommentsToJavaParser(newField,
             field.getCommentStructure());
+      }
+    } else {
+
+      // ROO-3834: Append default Javadoc if not exists a comment structure
+      CommentStructure defaultCommentStructure = new CommentStructure();
+      JavadocComment javadocComment =
+          new JavadocComment("TODO Auto-generated attribute documentation");
+      defaultCommentStructure.addComment(javadocComment, CommentLocation.BEGINNING);
+      field.setCommentStructure(defaultCommentStructure);
+
+      // if the field has annotations, add JavaDoc comments to the first
+      // annotation
+      if (annotations != null && annotations.size() > 0) {
+        AnnotationExpr firstAnnotation = annotations.get(0);
+
+        JavaParserCommentMetadataBuilder.updateCommentsToJavaParser(firstAnnotation,
+            defaultCommentStructure);
+
+        // Otherwise, add comments to the field declaration line
+      } else {
+        JavaParserCommentMetadataBuilder.updateCommentsToJavaParser(newField,
+            defaultCommentStructure);
       }
     }
 

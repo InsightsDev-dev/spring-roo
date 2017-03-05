@@ -13,12 +13,13 @@ import org.springframework.roo.model.JavaType;
 
 /**
  * Default implementation of {@link MethodMetadata}.
- * 
+ *
  * @author Ben Alex
+ * @author Juan Carlos García
  * @since 1.0
  */
 public class DefaultMethodMetadata extends AbstractInvocableMemberMetadata implements
-    MethodMetadata {
+    MethodMetadata, Comparable<DefaultMethodMetadata> {
 
   private final JavaSymbolName methodName;
   private final JavaType returnType;
@@ -59,6 +60,28 @@ public class DefaultMethodMetadata extends AbstractInvocableMemberMetadata imple
   }
 
   @Override
+  public boolean matchSignature(MethodMetadata otherMethod) {
+    if (methodName.getSymbolName().equals(otherMethod.getMethodName().getSymbolName())) {
+      if (otherMethod.getParameterTypes().size() == getParameterTypes().size()) {
+        List<JavaType> params =
+            AnnotatedJavaType.convertFromAnnotatedJavaTypes(this.getParameterTypes());
+        List<JavaType> paramsOther =
+            AnnotatedJavaType.convertFromAnnotatedJavaTypes(otherMethod.getParameterTypes());
+        boolean parametersEquals = true;
+        for (int i = 0; i < params.size(); i++) {
+          if (!params.get(i).equals(paramsOther.get(i))) {
+            parametersEquals = false;
+          }
+        }
+        if (parametersEquals) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  @Override
   public String toString() {
     final ToStringBuilder builder = new ToStringBuilder(this);
     builder.append("declaredByMetadataId", getDeclaredByMetadataId());
@@ -72,5 +95,10 @@ public class DefaultMethodMetadata extends AbstractInvocableMemberMetadata imple
     builder.append("customData", getCustomData());
     builder.append("body", getBody());
     return builder.toString();
+  }
+
+  @Override
+  public int compareTo(DefaultMethodMetadata method) {
+    return this.getMethodName().getSymbolName().compareTo(method.getMethodName().getSymbolName());
   }
 }

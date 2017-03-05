@@ -1,14 +1,5 @@
 package org.springframework.roo.addon.web.mvc.controller.addon.finder;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
@@ -17,12 +8,13 @@ import org.osgi.framework.BundleContext;
 import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.component.ComponentContext;
+import org.springframework.roo.addon.layers.repository.jpa.addon.RepositoryJpaLocator;
 import org.springframework.roo.addon.web.mvc.controller.addon.responses.ControllerMVCResponseService;
+import org.springframework.roo.classpath.ModuleFeatureName;
 import org.springframework.roo.classpath.TypeLocationService;
 import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
-import org.springframework.roo.classpath.details.annotations.AnnotationAttributeValue;
 import org.springframework.roo.classpath.details.annotations.AnnotationMetadata;
-import org.springframework.roo.classpath.details.annotations.NestedAnnotationAttributeValue;
+import org.springframework.roo.model.JavaPackage;
 import org.springframework.roo.model.JavaType;
 import org.springframework.roo.model.RooJavaType;
 import org.springframework.roo.project.LogicalPath;
@@ -38,12 +30,22 @@ import org.springframework.roo.shell.CommandMarker;
 import org.springframework.roo.shell.Converter;
 import org.springframework.roo.shell.ShellContext;
 import org.springframework.roo.support.logging.HandlerUtils;
+import org.springframework.roo.support.osgi.ServiceInstaceManager;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Commands which provide finder functionality through Spring MVC controllers.
- * 
+ *
  * @author Stefan Schmidt
  * @author Paula Navarro
+ * @author Sergio Clares
  * @since 1.2.0
  */
 @Component
@@ -55,18 +57,21 @@ public class WebFinderCommands implements CommandMarker {
   // ------------ OSGi component attributes ----------------
   private BundleContext context;
 
-
   @Reference
   private WebFinderOperations webFinderOperations;
+
+  @Reference
+  private RepositoryJpaLocator repositoryJpaLocator;
 
   private Map<String, ControllerMVCResponseService> responseTypes =
       new HashMap<String, ControllerMVCResponseService>();
   private Converter<JavaType> javaTypeConverter;
-  private TypeLocationService typeLocationService;
-  private ProjectOperations projectOperations;
+
+  private ServiceInstaceManager serviceInstaceManager = new ServiceInstaceManager();
 
   protected void activate(final ComponentContext context) {
     this.context = context.getBundleContext();
+    serviceInstaceManager.activate(this.context);
   }
 
   @CliAvailabilityIndicator({"web mvc finder"})
@@ -74,21 +79,46 @@ public class WebFinderCommands implements CommandMarker {
     return webFinderOperations.isWebFinderInstallationPossible();
   }
 
-  @CliOptionAutocompleteIndicator(
-      param = "controller",
-      command = "web mvc finder",
-      help = "--controller parameter should be completed with classes annotated with @RooController.")
-  public List<String> getControllerValues(ShellContext context) {
+  /**
+   * This indicator says if --entity parameter should be visible or not
+   *
+   * If --all parameter has been specified, --entity parameter will not be visible
+   * to prevent conflicts.
+   *
+   * @return
+   */
+  @CliOptionVisibilityIndicator(params = "entity", command = "web mvc finder",
+      help = "--entity parameter is not visible if --all parameter has been specified before.")
+  public boolean isEntityParameterVisible(ShellContext context) {
+    if (context.getParameters().containsKey("all")) {
+      return false;
+    }
+    return true;
+  }
+
+  @CliOptionAutocompleteIndicator(param = "entity", command = "web mvc finder",
+      help = "--entity parameter should be completed with classes annotated with @RooJpaEntity.")
+  public List<String> getEntityValues(ShellContext context) {
 
     // Get current value of class
-    String currentText = context.getParameters().get("controller");
+    String currentText = context.getParameters().get("entity");
 
     // Create results to return
     List<String> results = new ArrayList<String>();
+    for (JavaType entity : getTypeLocationService().findTypesWithAnnotation(
+        RooJavaType.ROO_JPA_ENTITY)) {
 
-    for (ClassOrInterfaceTypeDetails controller : getTypeLocationService()
-        .findClassesOrInterfaceDetailsWithAnnotation(RooJavaType.ROO_CONTROLLER)) {
-      String name = replaceTopLevelPackageString(controller, currentText);
+      ClassOrInterfaceTypeDetails repository = repositoryJpaLocator.getFirstRepository(entity);
+      if (repository == null) {
+        continue;
+      }
+      AnnotationMetadata repositoryAnnotation =
+          repository.getAnnotation(RooJavaType.ROO_REPOSITORY_JPA);
+      if (repositoryAnnotation.getAttribute("finders") == null) {
+        continue;
+      }
+      String name = replaceTopLevelPackageString(entity, currentText);
+
       if (!results.contains(name)) {
         results.add(name);
       }
@@ -104,15 +134,15 @@ public class WebFinderCommands implements CommandMarker {
   /**
    * This indicator says if --all parameter should be visible or not
    *
-   * If --finder parameter has been specified, --all parameter will not be visible
+   * If --entity parameter has been specified, --all parameter will not be visible
    * to prevent conflicts.
-   * 
+   *
    * @return
    */
   @CliOptionVisibilityIndicator(params = "all", command = "web mvc finder",
-      help = "--all parameter is not be visible if --finder parameter has been specified before.")
+      help = "--all parameter is not be visible if --entity parameter has been specified before.")
   public boolean isAllParameterVisible(ShellContext context) {
-    if (context.getParameters().containsKey("finder")) {
+    if (context.getParameters().containsKey("entity")) {
       return false;
     }
     return true;
@@ -120,36 +150,42 @@ public class WebFinderCommands implements CommandMarker {
 
 
   /**
-   * This indicator says if --finder parameter should be visible or not
+   * This indicator says if --queryMethod parameter should be visible or not
    *
-   * If --all parameter has been specified, --finder parameter will not be visible
-   * to prevent conflicts.
-   * 
+   * If --entity parameter has been specified, --queryMethod parameter will be visible.
+   *
    * @return
    */
-  @CliOptionVisibilityIndicator(params = "finder", command = "web mvc finder",
-      help = "--finder parameter is not be visible if --all parameter has been specified before.")
-  public boolean isFinderParameterVisible(ShellContext context) {
-    if (context.getParameters().containsKey("all")) {
-      return false;
+  @CliOptionVisibilityIndicator(
+      params = "queryMethod",
+      command = "web mvc finder",
+      help = "--queryMethod parameter is not visible if --entity parameter hasn't been specified before.")
+  public boolean isQueryMethodParameterVisible(ShellContext context) {
+    if (context.getParameters().containsKey("entity")) {
+      return true;
     }
-    return true;
+    return false;
   }
 
 
-  @CliOptionAutocompleteIndicator(param = "finder", command = "web mvc finder",
-      help = "--finder parameter should be completed with related service finders.")
-  public List<String> getAllFinderValues(ShellContext context) {
+  @CliOptionAutocompleteIndicator(param = "queryMethod", command = "web mvc finder",
+      help = "--queryMethod parameter should be completed with related repository finders.")
+  public List<String> getAllQueryMethodValues(ShellContext context) {
     List<String> finders = new ArrayList<String>();
 
-    if (context.getParameters().containsKey("controller")) {
-      // Extract controller
-      JavaType controller =
-          getJavaTypeConverter().convertFromText(context.getParameters().get("controller"),
-              JavaType.class, "");
+    if (context.getParameters().containsKey("entity")) {
+      // Extract entity
+      String providedEntity = context.getParameters().get("entity");
 
-      // Get finders
-      finders = getFinders(controller);
+      // Getting the JavaType converter
+      if (getJavaTypeConverter() != null && StringUtils.isNotBlank(providedEntity)) {
+        JavaType entity =
+            getJavaTypeConverter().convertFromText(providedEntity, JavaType.class, "");
+
+        // Get finders
+        finders = getFinders(entity, null);
+      }
+
     }
 
     if (finders.isEmpty()) {
@@ -158,104 +194,67 @@ public class WebFinderCommands implements CommandMarker {
     return finders;
   }
 
-
-  private List<String> getFinders(JavaType controller) {
-    List<String> finders = new ArrayList<String>();
-    AnnotationMetadata finderAnnotation = null;
-    boolean repositoryFound = false;
-
-    ClassOrInterfaceTypeDetails controllerDetails =
-        getTypeLocationService().getTypeDetails(controller);
-
-    // Get entity related to controller
-    JavaType entity =
-        (JavaType) controllerDetails.getAnnotation(RooJavaType.ROO_CONTROLLER)
-            .getAttribute("entity").getValue();
-
-    // Get repository related to controller entity
-    for (ClassOrInterfaceTypeDetails repository : getTypeLocationService()
-        .findClassesOrInterfaceDetailsWithAnnotation(RooJavaType.ROO_REPOSITORY_JPA)) {
-
-      AnnotationAttributeValue<JavaType> entityAttribute =
-          repository.getAnnotation(RooJavaType.ROO_REPOSITORY_JPA).getAttribute("entity");
-      if (entityAttribute.getValue().equals(entity)) {
-        repositoryFound = true;
-        finderAnnotation = repository.getAnnotation(RooJavaType.ROO_FINDERS);
-        break;
-      }
-    }
-
-    if (!repositoryFound) {
-      LOGGER
-          .log(
-              Level.SEVERE,
-              "ERROR: Entity related to controller %s does not have a repository generated. Use 'repository jpa' command to solve this.");
-      return finders;
-
-    }
-    if (finderAnnotation == null) {
-      LOGGER
-          .log(
-              Level.SEVERE,
-              "ERROR: Repository related to controller does not have any finder generated. Use 'finder add' command to solve this.");
-      return finders;
-
-    }
-    AnnotationAttributeValue<JavaType> managedFinders = finderAnnotation.getAttribute("finders");
-
-    if (managedFinders != null) {
-      List<?> values = (List<?>) managedFinders.getValue();
-      Iterator<?> it = values.iterator();
-
-      while (it.hasNext()) {
-        NestedAnnotationAttributeValue finder = (NestedAnnotationAttributeValue) it.next();
-        if (finder.getValue() != null && finder.getValue().getAttribute("finder") != null) {
-          finders.add((String) finder.getValue().getAttribute("finder").getValue());
-        }
-      }
-    }
-    return finders;
-
-  }
-
   /**
    * This indicator says if --responseType parameter should be visible or not
    *
    * If --all or --finder parameter have not been specified, --responseType parameter will not be visible
    * to preserve order.
-   * 
+   *
    * @return
    */
   @CliOptionVisibilityIndicator(
-      params = "responseType",
+      params = "package",
       command = "web mvc finder",
-      help = "--responseType parameter is not be visible if --all or --finder parameters have not been specified before.")
-  public boolean isResponseTypeParameterVisible(ShellContext context) {
-    if (context.getParameters().containsKey("finder") || context.getParameters().containsKey("all")) {
+      help = "--package parameter is not be visible if --all or --entity parameters have not been specified before.")
+  public boolean isPackageParameterVisible(ShellContext context) {
+    if (context.getParameters().containsKey("entity") || context.getParameters().containsKey("all")) {
       return true;
     }
     return false;
   }
 
   /**
-   * This indicator says if --responseType parameter should be mandatory or not
+   * This indicator says if --package parameter should be visible or not. If project has more
+   * than one 'application' modules (which contain one @SpringBootApplication), package will
+   * be mandatory.
    *
-   * If --all or --finder parameter have not been specified, --responseType parameter will not be mandatory.
-   * 
+   * @param shellContext
    * @return
    */
-  @CliOptionMandatoryIndicator(params = "responseType", command = "web mvc finder")
-  public boolean isResponseTypeParameterMandatory(ShellContext context) {
-    return isResponseTypeParameterVisible(context);
+  @CliOptionMandatoryIndicator(params = "package", command = "web mvc finder")
+  public boolean isPackageRequired(ShellContext shellContext) {
+    if (getTypeLocationService().getModuleNames(ModuleFeatureName.APPLICATION).size() <= 1) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * This indicator says if --responseType parameter should be visible or not
+   *
+   * If --all or --entity parameter have not been specified, --responseType parameter will not be visible
+   * to preserve order.
+   *
+   * @return
+   */
+  @CliOptionVisibilityIndicator(
+      params = "responseType",
+      command = "web mvc finder",
+      help = "--responseType parameter is not be visible if --all or --entity parameters have not been specified before.")
+  public boolean isResponseTypeParameterVisible(ShellContext context) {
+    if (context.getParameters().containsKey("entity") || context.getParameters().containsKey("all")) {
+      return true;
+    }
+    return false;
   }
 
   /**
    * This indicator returns all possible values for --responseType parameter.
-   * 
+   *
    * Depends of the specified --controller, responseTypes will be filtered to provide only that
    * responseTypes that exists on current controller. Also, only installed response types
    * will be provided.
-   * 
+   *
    * @param context
    * @return
    */
@@ -266,24 +265,15 @@ public class WebFinderCommands implements CommandMarker {
     // Generating all possible values
     List<String> responseTypes = new ArrayList<String>();
 
-    if (context.getParameters().containsKey("controller")) {
-      // Getting the specified controller
-      JavaType specifiedController =
-          getJavaTypeConverter().convertFromText(context.getParameters().get("controller"),
-              JavaType.class, "");
+    // Getting all installed services that implements ControllerMVCResponseService
+    Map<String, ControllerMVCResponseService> installedResponseTypes =
+        getInstalledControllerMVCResponseTypes();
 
-      // Getting all installed services that implements ControllerMVCResponseService
-      Map<String, ControllerMVCResponseService> installedResponseTypes =
-          getInstalledControllerMVCResponseTypes();
+    for (Entry<String, ControllerMVCResponseService> responseType : installedResponseTypes
+        .entrySet()) {
 
-      for (Entry<String, ControllerMVCResponseService> responseType : installedResponseTypes
-          .entrySet()) {
-        // If specified controller have this response type installed. Add to responseTypes
-        // possible values
-        if (responseType.getValue().hasResponseType(specifiedController)) {
-          responseTypes.add(responseType.getKey());
-        }
-      }
+      // Add installed response type
+      responseTypes.add(responseType.getKey());
     }
 
     if (responseTypes.isEmpty()) {
@@ -294,92 +284,161 @@ public class WebFinderCommands implements CommandMarker {
   }
 
   /**
+   * This indicator says if --pathPrefix parameter should be visible or not
+   *
+   * If --all or --entity parameter have not been specified, --pathPrefix parameter will not be visible
+   * to preserve order.
+   *
+   * @return
+   */
+  @CliOptionVisibilityIndicator(
+      params = "pathPrefix",
+      command = "web mvc finder",
+      help = "--pathPrefix parameter is not be visible if --all or --entity parameters have not been specified before.")
+  public boolean isPathPrefixParameterVisible(ShellContext context) {
+    if (context.getParameters().containsKey("entity") || context.getParameters().containsKey("all")) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * This method provides the Command definition to be able to add
    * new finder on controllers.
-   * 
+   *
    * @param controller
    * @param all
    * @param finder
    * @param responseType
    */
-  @CliCommand(value = "web mvc finder",
-      help = "Adds @RooWebFinder annotation to MVC controller type")
+  @CliCommand(
+      value = "web mvc finder",
+      help = "Publishes existing finders to web layer, generating controllers and additional views for "
+          + "them. It adds `@RooWebFinder` annotation to MVC controller type.")
   public void addController(
-      @CliOption(key = "controller", mandatory = true,
-          help = "The controller java type to apply this annotation to.") JavaType controller,
+      @CliOption(
+          key = "entity",
+          mandatory = false,
+          help = "The entity owning the finders that should be published. When working on a single module "
+              + "project, simply specify the name of the entity. If you consider it necessary, you can "
+              + "also specify the package. Ex.: `--class ~.domain.MyEntity` (where `~` is the base "
+              + "package). When working with multiple modules, you should specify the name of the entity "
+              + "and the module where it is. Ex.: `--class model:~.domain.MyEntity`. If the module is not "
+              + "specified, it is assumed that the entity is in the module which has the focus. "
+              + "Possible values are: any of the entities in the project. "
+              + "This option is mandatory if `--all` is not specified. Otherwise, using `--all` "
+              + "will cause the parameter `--entity` won't be available.") JavaType entity,
       @CliOption(
           key = "all",
           mandatory = false,
           specifiedDefaultValue = "true",
           unspecifiedDefaultValue = "false",
-          help = "Indicates if developer wants to generate all finders of the service related to the controller") boolean all,
-      @CliOption(key = "finder", mandatory = false,
-          help = "Indicates the name of the finder to add into controller") String finder,
+          help = "Indicates if developer wants to publish in web layer all finders from all entities in "
+              + "project. "
+              + "This option is mandatory if `--entity` is not specified. Otherwise, using `--entity` "
+              + "will cause the parameter `--all` won't be available. "
+              + "Default if option present: `true`; default if option not present: `false`.") boolean all,
+      @CliOption(key = "queryMethod", mandatory = false,
+          help = "Indicates the name of the finder to add to web layer. "
+              + "Possible values are: any of the finder names created for the entity, included in "
+              + "`@RooJpaRepository` of the `--entity` associated repository. "
+              + "This option is available only when `--entity` has been specified.") String queryMethod,
       @CliOption(
           key = "responseType",
+          mandatory = false,
+          help = "Indicates the responseType to be used by generated finder controllers. Depending on "
+              + "the selected responseType, generated methods and views will vary. "
+              + "Possible values are: `JSON` plus any response type installed with `web mvc view setup` "
+              + "command. "
+              + "This option is only available if `--all` or `--entity` parameters have been specified. "
+              + "Default: `JSON`.") String responseType,
+      @CliOption(
+          key = "package",
           mandatory = true,
-          help = "Indicates the responseType to be used by generated controller. Depending of the selected responseType, generated methods and views will vary.") String responseType) {
+          unspecifiedDefaultValue = "~.web",
+          help = "Indicates the Java package where the finder controllers should be generated. In"
+              + " multi-module project you should specify the module name before the package name. "
+              + "Ex.: `--package application:org.springframework.roo.web` but, if module name is not "
+              + "present, the Roo Shell focused module will be used. "
+              + "This option is available only if `--all` or `--entity` option has been specified. "
+              + "Default value if not present: `~.web` package, or 'application:~.web' if multi-module "
+              + "project.") JavaPackage controllerPackage,
+      @CliOption(
+          key = "pathPrefix",
+          mandatory = false,
+          unspecifiedDefaultValue = "",
+          specifiedDefaultValue = "",
+          help = "Indicates the default path value for accesing finder resources in controller, used for "
+              + "this controller `@RequestMapping` excluding first '/'. "
+              + "This option is available only if `--all` or `--entity` option has been specified.") String pathPrefix) {
 
     // Getting --responseType service
     Map<String, ControllerMVCResponseService> responseTypeServices =
         getInstalledControllerMVCResponseTypes();
 
     // Validate that provided responseType is a valid provided
-    if (!responseTypeServices.containsKey(responseType)) {
-      LOGGER
-          .log(
-              Level.SEVERE,
-              "ERROR: Provided responseType is not valid. Use autocomplete feature to obtain valid responseTypes.");
-      return;
-    }
-
-    // Get finders
-    List<String> finders = getFinders(controller);
-
-    // Check --all parameter
-    if (!all) {
-      if (!finders.contains(finder)) {
+    ControllerMVCResponseService controllerResponseType = null;
+    if (responseType != null) {
+      if (!responseTypeServices.containsKey(responseType)) {
         LOGGER.log(Level.SEVERE,
-            "ERROR: Specified finder is not valid. User autocomplete in --finder parameter.");
+            "ERROR: Provided responseType is not valid. Use autocomplete feature "
+                + "to obtain valid responseTypes.");
         return;
+      } else {
+        controllerResponseType = responseTypeServices.get(responseType);
       }
-      finders.clear();
-      finders.add(finder);
+    } else {
+      controllerResponseType = responseTypeServices.get("JSON");
     }
 
-    webFinderOperations.addFinders(controller, finders, responseTypeServices.get(responseType));
+    // Execute finder operation
+    if (!all) {
+
+      // Create queryMethods list
+      List<String> queryMethods = new ArrayList<String>();
+      if (queryMethod != null) {
+        queryMethods.add(queryMethod);
+      } else {
+        queryMethods = getFinders(entity, controllerResponseType);
+      }
+      webFinderOperations.createOrUpdateSearchControllerForEntity(entity, queryMethods,
+          controllerResponseType, controllerPackage, pathPrefix);
+    } else {
+      webFinderOperations.createOrUpdateSearchControllerForAllEntities(controllerResponseType,
+          controllerPackage, pathPrefix);
+    }
   }
 
   /**
    * Replaces a JavaType fullyQualifiedName for a shorter name using '~' for TopLevelPackage
-   * 
+   *
    * @param cid ClassOrInterfaceTypeDetails of a JavaType
    * @param currentText String current text for option value
    * @return the String representing a JavaType with its name shortened
    */
-  private String replaceTopLevelPackageString(ClassOrInterfaceTypeDetails cid, String currentText) {
-    String javaTypeFullyQualilfiedName = cid.getType().getFullyQualifiedTypeName();
+  private String replaceTopLevelPackageString(JavaType type, String currentText) {
+    String javaTypeFullyQualilfiedName = type.getFullyQualifiedTypeName();
     String javaTypeString = "";
     String topLevelPackageString = "";
 
     // Add module value to topLevelPackage when necessary
-    if (StringUtils.isNotBlank(cid.getType().getModule())
-        && !cid.getType().getModule().equals(getProjectOperations().getFocusedModuleName())) {
+    if (StringUtils.isNotBlank(type.getModule())
+        && !type.getModule().equals(getProjectOperations().getFocusedModuleName())) {
 
       // Target module is not focused
-      javaTypeString = cid.getType().getModule().concat(LogicalPath.MODULE_PATH_SEPARATOR);
+      javaTypeString = type.getModule().concat(LogicalPath.MODULE_PATH_SEPARATOR);
       topLevelPackageString =
-          getProjectOperations().getTopLevelPackage(cid.getType().getModule())
+          getProjectOperations().getTopLevelPackage(type.getModule())
               .getFullyQualifiedPackageName();
-    } else if (StringUtils.isNotBlank(cid.getType().getModule())
-        && cid.getType().getModule().equals(getProjectOperations().getFocusedModuleName())
-        && (currentText.startsWith(cid.getType().getModule()) || cid.getType().getModule()
-            .startsWith(currentText)) && StringUtils.isNotBlank(currentText)) {
+    } else if (StringUtils.isNotBlank(type.getModule())
+        && type.getModule().equals(getProjectOperations().getFocusedModuleName())
+        && (currentText.startsWith(type.getModule()) || type.getModule().startsWith(currentText))
+        && StringUtils.isNotBlank(currentText)) {
 
       // Target module is focused but user wrote it
-      javaTypeString = cid.getType().getModule().concat(LogicalPath.MODULE_PATH_SEPARATOR);
+      javaTypeString = type.getModule().concat(LogicalPath.MODULE_PATH_SEPARATOR);
       topLevelPackageString =
-          getProjectOperations().getTopLevelPackage(cid.getType().getModule())
+          getProjectOperations().getTopLevelPackage(type.getModule())
               .getFullyQualifiedPackageName();
     } else {
 
@@ -395,7 +454,7 @@ public class WebFinderCommands implements CommandMarker {
     if ((StringUtils.isBlank(currentText) || auxString.startsWith(currentText))
         && StringUtils.contains(javaTypeFullyQualilfiedName, topLevelPackageString)) {
 
-      // Value is for autocomplete only or user wrote abbreviate value  
+      // Value is for autocomplete only or user wrote abbreviate value
       javaTypeString = auxString;
     } else {
 
@@ -407,9 +466,22 @@ public class WebFinderCommands implements CommandMarker {
   }
 
   /**
+   * Get all finder names associated to an entity
+   *
+   * @param entity the JavaType representing the entity whose finder names should
+   *            be returned.
+   * @param controllerResponseType (can be null)
+   * @return a List<String> with the finder names.
+   */
+  public List<String> getFinders(JavaType entity,
+      ControllerMVCResponseService controllerResponseType) {
+    return webFinderOperations.getFindersWhichCanBePublish(entity, controllerResponseType);
+  }
+
+  /**
    * This method gets all implementations of ControllerMVCResponseService interface to be able
    * to locate all installed ControllerMVCResponseService
-   * 
+   *
    * @return Map with responseTypes identifier and the ControllerMVCResponseService implementation
    */
   public Map<String, ControllerMVCResponseService> getInstalledControllerMVCResponseTypes() {
@@ -445,82 +517,41 @@ public class WebFinderCommands implements CommandMarker {
   }
 
   public ProjectOperations getProjectOperations() {
-    if (projectOperations == null) {
-      // Get all Services implement ProjectOperations interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(ProjectOperations.class.getName(), null);
+    return serviceInstaceManager.getServiceInstance(this, ProjectOperations.class);
 
-        for (ServiceReference<?> ref : references) {
-          projectOperations = (ProjectOperations) this.context.getService(ref);
-          return projectOperations;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load ProjectOperations on ControllerCommands.");
-        return null;
-      }
-    } else {
-      return projectOperations;
-    }
   }
 
   /**
-   * This method obtains JavaType converter to be able to obtain JavaType 
+   * This method obtains JavaType converter to be able to obtain JavaType
    * from strings
-   * 
+   *
    * @return
    */
+  @SuppressWarnings("unchecked")
   public Converter<JavaType> getJavaTypeConverter() {
     if (javaTypeConverter == null) {
-      // Get all Services implement Converter<JavaType> interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(Converter.class.getName(), null);
+      List<Converter> javaTypeConverters =
+          serviceInstaceManager.getServiceInstance(this, Converter.class,
+              new ServiceInstaceManager.Matcher<Converter>() {
+                @Override
+                public boolean match(Converter service) {
+                  return service.supports(JavaType.class, "");
+                }
+              });
 
-        for (ServiceReference<?> ref : references) {
-          Converter<?> converter = (Converter<?>) this.context.getService(ref);
-          if (converter.supports(JavaType.class, "")) {
-            javaTypeConverter = (Converter<JavaType>) converter;
-            return javaTypeConverter;
-          }
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load Converter<JavaType> on WebFinderCommands.");
-        return null;
+      if (!javaTypeConverters.isEmpty()) {
+        javaTypeConverter = javaTypeConverters.get(0);
       }
-    } else {
+
       return javaTypeConverter;
+
     }
+    return javaTypeConverter;
   }
 
 
   public TypeLocationService getTypeLocationService() {
-    if (typeLocationService == null) {
-      // Get all Services implement TypeLocationService interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(TypeLocationService.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          typeLocationService = (TypeLocationService) this.context.getService(ref);
-          return typeLocationService;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load TypeLocationService on ControllerCommands.");
-        return null;
-      }
-    } else {
-      return typeLocationService;
-    }
+    return serviceInstaceManager.getServiceInstance(this, TypeLocationService.class);
   }
 
 }

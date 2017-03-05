@@ -1,8 +1,5 @@
 package org.springframework.roo.process.manager.internal;
 
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
@@ -22,9 +19,12 @@ import org.springframework.roo.shell.Shell;
 import org.springframework.roo.shell.osgi.AbstractFlashingObject;
 import org.springframework.roo.support.logging.HandlerUtils;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 /**
  * Allows monitoring of {@link ProcessManager} for development mode users.
- * 
+ *
  * @author Ben Alex
  * @author Stefan Schmidt
  * @author Juan Carlos García
@@ -71,10 +71,15 @@ public class ProcessManagerDiagnosticsListener extends AbstractFlashingObject im
   }
 
   @CliCommand(value = PROCESS_MANAGER_DEBUG_COMMAND,
-      help = "Indicates if process manager debugging is desired")
-  public void processManagerDebug(@CliOption(key = {"", "enabled"}, mandatory = false,
-      specifiedDefaultValue = "true", unspecifiedDefaultValue = "true",
-      help = "Activates debug mode") final boolean debug) {
+      help = "Indicates if process manager debugging is desired. It is only available if "
+          + "'addon development mode' is true.")
+  public void processManagerDebug(
+      @CliOption(
+          key = {"", "enabled"},
+          mandatory = false,
+          specifiedDefaultValue = "true",
+          unspecifiedDefaultValue = "true",
+          help = "Activates debug mode, which shows status of process manager such as 'Active' or 'Scanning'.") final boolean debug) {
     isDebug = debug;
   }
 

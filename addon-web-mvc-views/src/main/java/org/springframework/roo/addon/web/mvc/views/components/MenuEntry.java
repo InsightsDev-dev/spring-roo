@@ -1,8 +1,13 @@
 package org.springframework.roo.addon.web.mvc.views.components;
 
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.roo.support.util.XmlUtils;
+
+import java.util.Map;
+
 /**
  * This class contains all necessary information about a menu entry.
- * 
+ *
  * @author Juan Carlos Garcia
  * @since 2.0
  */
@@ -10,8 +15,37 @@ public class MenuEntry {
 
   private String entityName;
   private String path;
+  private String pathPrefix;
   private String entityLabel;
   private String entityPluralLabel;
+  private Map<String, String> finderNamesAndPaths;
+  private boolean userManaged;
+  private String codeManaged;
+  private String id;
+  private boolean simple;
+  private String z;
+  private boolean addDefaultEntries;
+  private boolean readOnly;
+
+  public MenuEntry(String entityName, String path, String pathPrefix, String entityLabel,
+      String entityPluralLabel, Map<String, String> finderNamesAndPaths, boolean simple,
+      boolean addDefaultEntries, boolean readOnly) {
+    this.entityName = entityName;
+    this.path = path;
+    this.pathPrefix = pathPrefix;
+    this.entityLabel = entityLabel;
+    this.entityPluralLabel = entityPluralLabel;
+    this.userManaged = false;
+    this.codeManaged = "";
+    this.finderNamesAndPaths = finderNamesAndPaths;
+    this.simple = simple;
+    this.addDefaultEntries = addDefaultEntries;
+    this.readOnly = readOnly;
+    buildId();
+
+    // Calculate the Z parameter as the hash code of the other parameters
+    this.z = calculateZ();
+  }
 
   public String getEntityName() {
     return entityName;
@@ -43,6 +77,121 @@ public class MenuEntry {
 
   public String getEntityPluralLabel() {
     return entityPluralLabel;
+  }
+
+  public Map<String, String> getFinderNamesAndPaths() {
+    return finderNamesAndPaths;
+  }
+
+  public void setFinderNamesAndPaths(Map<String, String> finderNamesAndPaths) {
+    this.finderNamesAndPaths = finderNamesAndPaths;
+  }
+
+  public String getPathPrefix() {
+    return pathPrefix;
+  }
+
+  public void setPathPrefix(String pathPrefix) {
+    this.pathPrefix = pathPrefix;
+  }
+
+  public String getZ() {
+    return z;
+  }
+
+  public void setZ(String z) {
+    this.z = z;
+  }
+
+
+  public boolean isUserManaged() {
+    return userManaged;
+  }
+
+  public void setUserManaged(boolean userManaged) {
+    this.userManaged = userManaged;
+  }
+
+  public String getCodeManaged() {
+    return codeManaged;
+  }
+
+  public void setCodeManaged(String codeManaged) {
+    this.codeManaged = codeManaged;
+  }
+
+  public String getId() {
+    return id;
+  }
+
+  public void setId(String id) {
+    this.id = id;
+  }
+
+  public boolean isReadOnly() {
+    return readOnly;
+  }
+
+  public void setReadOnly(boolean readOnly) {
+    this.readOnly = readOnly;
+  }
+
+  /**
+   *
+   * Builds the id of the specified entry
+   *
+   */
+  public void buildId() {
+
+    String id = StringUtils.EMPTY;
+
+    if (!StringUtils.isEmpty(this.pathPrefix)) {
+      id = id.concat(XmlUtils.convertId(pathPrefix.toLowerCase()));
+    }
+
+    if (StringUtils.isNotEmpty(id)) {
+      id.concat("-");
+    }
+
+    // If field is not blank or null, concatenate it
+    if (StringUtils.isNotEmpty(this.entityName)) {
+      id = id.concat(XmlUtils.convertId(entityName.toLowerCase()));
+    }
+
+
+    this.id = id;
+  }
+
+  /**
+     * Calculate the hash code of the entityName, path, pathPrefix, entityLabel and entityPluralLabel properties
+     *
+     * @return hash code
+     */
+  private String calculateZ() {
+    final int prime = 31;
+    int result = 1;
+    result = prime * result + ((entityName == null) ? 0 : entityName.hashCode());
+    result = prime * result + ((path == null) ? 0 : path.hashCode());
+    result = prime * result + ((pathPrefix == null) ? 0 : pathPrefix.hashCode());
+    result = prime * result + ((entityLabel == null) ? 0 : entityLabel.hashCode());
+    result = prime * result + ((entityPluralLabel == null) ? 0 : entityPluralLabel.hashCode());
+    return Integer.toHexString(result);
+  }
+
+  public boolean isSimple() {
+    return simple;
+  }
+
+  public void setSimple(boolean simple) {
+    this.simple = simple;
+  }
+
+  public boolean isAddDefaultEntries() {
+    return addDefaultEntries;
+  }
+
+  public void setAddDefaultEntries(boolean addDefaultEntries) {
+    this.addDefaultEntries = addDefaultEntries;
   }
 
 }

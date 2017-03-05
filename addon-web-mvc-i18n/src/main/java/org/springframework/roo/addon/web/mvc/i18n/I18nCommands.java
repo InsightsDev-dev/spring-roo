@@ -2,6 +2,7 @@ package org.springframework.roo.addon.web.mvc.i18n;
 
 import static org.springframework.roo.shell.OptionContexts.APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE;
 
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.felix.scr.annotations.Component;
@@ -25,10 +26,11 @@ import org.springframework.roo.shell.ShellContext;
 import org.springframework.roo.support.logging.HandlerUtils;
 
 /**
- * This class provides necessary commands to be able to include views on
- * generated project
- * 
+ * This class provides necessary commands to be able to include new languages on
+ * generated projects.
+ *
  * @author Sergio Clares
+ * @author Juan Carlos García
  * @since 2.0
  */
 @Component
@@ -54,11 +56,11 @@ public class I18nCommands implements CommandMarker {
   }
 
   /**
-   * This indicator checks if --module parameter should be mandatory or not. 
-   * 
-   * If focused module doesn't match with the properties of ModuleFeature APPLICATION,
-   * --module parameter should be mandatory.
-   * 
+   * This indicator checks if --module parameter should be mandatory or not.
+   *
+   * If focused module doesn't match with the properties of ModuleFeature
+   * APPLICATION, --module parameter should be mandatory.
+   *
    * @param shellContext
    * @return
    */
@@ -74,10 +76,11 @@ public class I18nCommands implements CommandMarker {
 
   /**
    * This indicator checks if --module parameter should be visible or not.
-   * 
-   * If exists more than one module that match with the properties of ModuleFeature APPLICATION,
-   * --module parameter should be visible and mandatory.
-   * 
+   *
+   * If exists more than one module that match with the properties of
+   * ModuleFeature APPLICATION, --module parameter should be visible and
+   * mandatory.
+   *
    * @param shellContext
    * @return
    */
@@ -90,21 +93,39 @@ public class I18nCommands implements CommandMarker {
     return false;
   }
 
-  @CliCommand(value = "web mvc language",
-      help = "Install new internationalization bundle for MVC views.")
+  @CliCommand(
+      value = "web mvc language",
+      help = "Installs new language in generated project views. Also, could be used to specify the "
+          + "default language of the project.")
   public void language(
-      @CliOption(key = {"", "code"}, mandatory = true,
-          help = "The language code for the desired bundle") final I18n i18n,
-      @CliOption(key = "module", mandatory = true,
-          help = "The application module where to install message bundles",
-          unspecifiedDefaultValue = ".", optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module) {
+      @CliOption(
+          key = "code",
+          mandatory = true,
+          help = "The language code for the desired bundle. "
+              + "Possible values are: supported languages. Currently `en` (English, default) and `es` (Spanish).") final I18n i18n,
+      @CliOption(key = "useAsDefault", mandatory = false,
+          help = "Indicates if selected language should be used as default on this application. "
+              + "Default: `false`.", specifiedDefaultValue = "true",
+          unspecifiedDefaultValue = "false") boolean useAsDefault,
+      @CliOption(
+          key = "module",
+          mandatory = true,
+          help = "The application module where to install the language support. "
+              + "This option is mandatory if the focus is not set in an application module, that is, a "
+              + "module containing an `@SpringBootApplication` class. "
+              + "This option is available only if there are more than one application module and none of"
+              + " them is focused. "
+              + "Default if option not present: the unique 'application' module, or focused 'application'"
+              + " module.", unspecifiedDefaultValue = ".",
+          optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module) {
 
     if (i18n == null) {
-      LOGGER.warning("Could not parse language code");
+      LOGGER.log(Level.INFO, "ERROR: You should provide a valid language code.");
       return;
     }
 
-    getI18nOperations().installI18n(i18n, module);
+    // Install language
+    getI18nOperations().installLanguage(i18n, useAsDefault, module);
   }
 
 

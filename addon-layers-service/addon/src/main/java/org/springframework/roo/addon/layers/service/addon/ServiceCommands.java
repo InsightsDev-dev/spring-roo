@@ -2,15 +2,8 @@ package org.springframework.roo.addon.layers.service.addon;
 
 import static org.springframework.roo.shell.OptionContexts.PROJECT;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Validate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
@@ -18,14 +11,16 @@ import org.osgi.framework.BundleContext;
 import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.component.ComponentContext;
+import org.springframework.roo.addon.layers.repository.jpa.addon.RepositoryJpaLocator;
 import org.springframework.roo.classpath.TypeLocationService;
 import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
-import org.springframework.roo.classpath.details.annotations.AnnotationAttributeValue;
+import org.springframework.roo.converters.JavaPackageConverter;
 import org.springframework.roo.model.JavaPackage;
 import org.springframework.roo.model.JavaType;
 import org.springframework.roo.model.RooJavaType;
 import org.springframework.roo.project.LogicalPath;
 import org.springframework.roo.project.ProjectOperations;
+import org.springframework.roo.project.maven.Pom;
 import org.springframework.roo.shell.CliAvailabilityIndicator;
 import org.springframework.roo.shell.CliCommand;
 import org.springframework.roo.shell.CliOption;
@@ -37,12 +32,20 @@ import org.springframework.roo.shell.Converter;
 import org.springframework.roo.shell.ShellContext;
 import org.springframework.roo.support.logging.HandlerUtils;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 /**
  * This class defines available commands to manage service layer. Allows to
  * create new service related with some specific entity or generate services for
  * every entity defined on generated project. Always generates interface and its
  * implementation
- * 
+ *
  * @author Stefan Schmidt
  * @author Juan Carlos García
  * @since 1.2.0
@@ -62,6 +65,8 @@ public class ServiceCommands implements CommandMarker {
   private ProjectOperations projectOperations;
   @Reference
   private TypeLocationService typeLocationService;
+  @Reference
+  private RepositoryJpaLocator repositoryJpaLocator;
 
   private Converter<JavaType> javaTypeConverter;
 
@@ -97,18 +102,18 @@ public class ServiceCommands implements CommandMarker {
     return false;
   }
 
-  @CliOptionMandatoryIndicator(command = "service", params = "interface")
-  public boolean isInterfaceParameterMandatory(ShellContext shellContext) {
-    if (shellContext.getParameters().containsKey("repository")
+  @CliOptionMandatoryIndicator(command = "service", params = "repository")
+  public boolean isRepositoryParameterMandatory(ShellContext shellContext) {
+    if (shellContext.getParameters().containsKey("entity")
         && projectOperations.isMultimoduleProject()) {
       return true;
     }
     return false;
   }
 
-  @CliOptionMandatoryIndicator(command = "service", params = "repository")
-  public boolean isRepositoryParameterMandatory(ShellContext shellContext) {
-    if (shellContext.getParameters().containsKey("entity")
+  @CliOptionMandatoryIndicator(command = "service", params = "interface")
+  public boolean isInterfaceParameterMandatory(ShellContext shellContext) {
+    if (shellContext.getParameters().containsKey("repository")
         && projectOperations.isMultimoduleProject()) {
       return true;
     }
@@ -138,18 +143,12 @@ public class ServiceCommands implements CommandMarker {
           getJavaTypeConverter().convertFromText(entity, JavaType.class, PROJECT);
 
       // Check if current entity has valid repository
-      Set<ClassOrInterfaceTypeDetails> repositories =
-          typeLocationService
-              .findClassesOrInterfaceDetailsWithAnnotation(RooJavaType.ROO_REPOSITORY_JPA);
+      Collection<ClassOrInterfaceTypeDetails> repositories =
+          repositoryJpaLocator.getRepositories(domainEntity);
 
       for (ClassOrInterfaceTypeDetails repository : repositories) {
-        AnnotationAttributeValue<JavaType> entityAttr =
-            repository.getAnnotation(RooJavaType.ROO_REPOSITORY_JPA).getAttribute("entity");
-
-        if (entityAttr != null && entityAttr.getValue().equals(domainEntity)) {
-          String replacedValue = replaceTopLevelPackageString(repository, currentText);
-          allPossibleValues.add(replacedValue);
-        }
+        String replacedValue = replaceTopLevelPackageString(repository, currentText);
+        allPossibleValues.add(replacedValue);
       }
 
       if (allPossibleValues.isEmpty()) {
@@ -201,7 +200,13 @@ public class ServiceCommands implements CommandMarker {
     for (String module : modules) {
       if (StringUtils.isNotBlank(module)
           && !module.equals(projectOperations.getFocusedModule().getModuleName())) {
-        allPossibleValues.add(module.concat(LogicalPath.MODULE_PATH_SEPARATOR).concat("~."));
+        allPossibleValues.add(module.concat(LogicalPath.MODULE_PATH_SEPARATOR)
+            .concat(JavaPackageConverter.TOP_LEVEL_PACKAGE_SYMBOL).concat("."));
+      } else if (!projectOperations.isMultimoduleProject()) {
+
+        // Add only JavaPackage and JavaType completion
+        allPossibleValues.add(String.format("%s.service.api.",
+            JavaPackageConverter.TOP_LEVEL_PACKAGE_SYMBOL));
       }
     }
 
@@ -223,7 +228,13 @@ public class ServiceCommands implements CommandMarker {
     for (String module : modules) {
       if (StringUtils.isNotBlank(module)
           && !module.equals(projectOperations.getFocusedModule().getModuleName())) {
-        allPossibleValues.add(module.concat(LogicalPath.MODULE_PATH_SEPARATOR).concat("~."));
+        allPossibleValues.add(module.concat(LogicalPath.MODULE_PATH_SEPARATOR)
+            .concat(JavaPackageConverter.TOP_LEVEL_PACKAGE_SYMBOL).concat("."));
+      } else if (!projectOperations.isMultimoduleProject()) {
+
+        // Add only JavaPackage and JavaType completion
+        allPossibleValues.add(String.format("%s.service.impl.",
+            JavaPackageConverter.TOP_LEVEL_PACKAGE_SYMBOL));
       }
     }
 
@@ -234,26 +245,10 @@ public class ServiceCommands implements CommandMarker {
   }
 
   /**
-   * This indicator says if --apiPackage and --implPackage parameters should be mandatory or not
-   *
-   * If --all parameter has been specified, --apiPackage and --implPackage parameters will be mandatory.
-   * 
-   * @param context ShellContext
-   * @return
-   */
-  @CliOptionMandatoryIndicator(params = {"apiPackage", "implPackage"}, command = "service")
-  public boolean arePackageParametersMandatory(ShellContext context) {
-    if (context.getParameters().containsKey("all")) {
-      return true;
-    }
-    return false;
-  }
-
-  /**
    * This indicator says if --apiPackage and --implPackage parameters are visible.
-   * 
+   *
    * If --all is specified, --apiPackage and --implPackage will be visible
-   * 
+   *
    * @param context ShellContext
    * @return
    */
@@ -270,9 +265,9 @@ public class ServiceCommands implements CommandMarker {
 
   /**
    * This indicator says if --all parameter is visible.
-   * 
+   *
    * If --entity is specified, --all won't be visible
-   * 
+   *
    * @param context ShellContext
    * @return
    */
@@ -287,9 +282,9 @@ public class ServiceCommands implements CommandMarker {
 
   /**
    * This indicator says if --entity parameter is visible.
-   * 
+   *
    * If --all is specified, --entity won't be visible
-   * 
+   *
    * @param context ShellContext
    * @return
    */
@@ -302,27 +297,155 @@ public class ServiceCommands implements CommandMarker {
     return true;
   }
 
-  @CliCommand(value = "service", help = "Creates new service interface and its implementation.")
+  @CliCommand(
+      value = "service",
+      help = "Creates new service interface and its implementation related to an entity, or for all the "
+          + "entities in generated project, with some basic management methods by using Spring Data repository methods.")
   public void service(
       @CliOption(
           key = "all",
           mandatory = false,
           specifiedDefaultValue = "true",
           unspecifiedDefaultValue = "false",
-          help = "Indicates if developer wants to generate service interfaces and their implementations for every entity of current project ") boolean all,
-      @CliOption(key = "entity", optionContext = PROJECT, mandatory = false,
-          help = "The domain entity this service should expose") final JavaType domainType,
-      @CliOption(key = "repository", optionContext = PROJECT, mandatory = true,
-          help = "The repository this service should expose") final JavaType repositoryType,
-      @CliOption(key = "interface", mandatory = true,
-          help = "The service interface to be generated") final JavaType interfaceType,
-      @CliOption(key = "class", mandatory = false,
-          help = "The service implementation to be generated") final JavaType implType,
-      @CliOption(key = "apiPackage", mandatory = true, help = "The java interface package") final JavaPackage apiPackage,
-      @CliOption(key = "implPackage", mandatory = true,
-          help = "The java package of the implementation classes for the interfaces") JavaPackage implPackage) {
+          help = "Indicates if developer wants to generate service interfaces and their implementations "
+              + "for every entity of current project. "
+              + "This option is mandatory if `--entity` is not specified. Otherwise, using `--entity` "
+              + "will cause the parameter `--all` won't be available. "
+              + "Default if option present: `true`; default if option not present: `false`.") boolean all,
+      @CliOption(
+          key = "entity",
+          optionContext = PROJECT,
+          mandatory = false,
+          help = "The domain entity this service should manage. When working on a single module "
+              + "project, simply specify the name of the entity. If you consider it necessary, you can "
+              + "also specify the package. Ex.: `--class ~.domain.MyEntity` (where `~` is the base package). "
+              + "When working with multiple modules, you should specify the name of the entity and the "
+              + "module where it is. Ex.: `--class model:~.domain.MyEntity`. If the module is not specified, "
+              + "it is assumed that the entity is in the module which has the focus. "
+              + "Possible values are: any of the entities in the project. "
+              + "This option is mandatory if `--all` is not specified. Otherwise, using `--all` "
+              + "will cause the parameter `--entity` won't be available.") final JavaType domainType,
+      @CliOption(
+          key = "repository",
+          optionContext = PROJECT,
+          mandatory = true,
+          help = "The repository this service should expose. When working on a single module project, "
+              + "simply specify the name of the class. If you consider it necessary, you can also "
+              + "specify the package. Ex.: `--class ~.repository.MyClass` (where `~` is the base "
+              + "package). When working with multiple modules, you should specify the name of the class "
+              + "and the module where it is. Ex.: `--class repository:~.MyClass`. If the module is not "
+              + "specified, it is assumed that the class is in the module which has the focus. "
+              + "Possible values are: any of the repositories annotated with `@RooJpaRepository` and "
+              + "associated to the entity specified in `--entity`. "
+              + "This option is mandatory if `--entity` has been already specified and the project is "
+              + "multi-module. "
+              + "This option is available only when `--entity` has been specified. "
+              + "Default if option not present: first repository annotated with `@RooJpaRepository` and "
+              + "associated to the entity specified in `--entity`.") final JavaType repositoryType,
+      @CliOption(
+          key = "interface",
+          mandatory = true,
+          help = "The service interface to be generated. When working on a single module project, simply "
+              + "specify the name of the class. If you consider it necessary, you can also specify the "
+              + "package. Ex.: `--class ~.service.api.MyClass` (where `~` is the base package). When "
+              + "working with multiple modules, you should specify the name of the class and the module "
+              + "where it is. Ex.: `--class service-api:~.MyClass`. If the module is not specified, it "
+              + "is assumed that the class is in the module which has the focus. "
+              + "This option is mandatory if `--entity` has been already specified and the project is "
+              + "multi-module. "
+              + "This option is available only when `--entity` has been specified. "
+              + "Default if option not present: concatenation of entity simple name with 'Service' in "
+              + "`~.service.api` package, or 'service-api:~.' if multi-module project.") final JavaType interfaceType,
+      @CliOption(
+          key = "class",
+          mandatory = false,
+          help = "The service implementation to be generated. When working on a single module "
+              + "project, simply specify the name of the class. If you consider it necessary, you can "
+              + "also specify the package. Ex.: `--class ~.service.impl.MyClass` (where `~` is the base "
+              + "package). When working with multiple modules, you should specify the name of the class "
+              + "and the module where it is. Ex.: `--class service-impl:~.MyClass`. If the module is not "
+              + "specified, it is assumed that the class is in the module which has the focus. "
+              + "This option is available only when `--entity` has been specified. "
+              + "Default if option not present: concatenation of entity simple name with 'ServiceImpl' "
+              + "in `~.service.impl` package, or 'service-impl:~.' if multi-module project.") final JavaType implType,
+      @CliOption(
+          key = "apiPackage",
+          mandatory = false,
+          help = "The java interface package. In multi-module project you should specify the module name"
+              + " before the package name. Ex.: `--apiPackage service-api:org.springframework.roo` but, "
+              + "if module name is not present, the Roo Shell focused module will be used. "
+              + "This option is available only when `--all` parameter has been specified. "
+              + "Default value if not present: `~.service.api` package, or 'service-api:~.' if "
+              + "multi-module project.") JavaPackage apiPackage,
+      @CliOption(
+          key = "implPackage",
+          mandatory = false,
+          help = "The java package of the implementation classes for the interfaces. In multi-module "
+              + "project you should specify the module name before the package name. Ex.: `--implPackage "
+              + "service-impl:org.springframework.roo` but, if module name is not present, the Roo Shell "
+              + "focused module will be used. "
+              + "This option is available only when `--all` parameter has been specified. "
+              + "Default value if not present: `~.service.impl` package, or 'service-impl:~.' if "
+              + "multi-module project.") JavaPackage implPackage) {
 
     if (all) {
+
+      // If user didn't specified some API package, use default API package
+      if (apiPackage == null) {
+        if (projectOperations.isMultimoduleProject()) {
+
+          // Build default JavaPackage with module
+          for (String moduleName : projectOperations.getModuleNames()) {
+            if (moduleName.equals("service-api")) {
+              Pom module = projectOperations.getPomFromModuleName(moduleName);
+              apiPackage =
+                  new JavaPackage(typeLocationService.getTopLevelPackageForModule(module),
+                      moduleName);
+              break;
+            }
+          }
+
+          // Check if repository found
+          Validate.notNull(apiPackage, "Couldn't find in project a default service.api "
+              + "package. Please, use 'apiPackage' option to specify it.");
+        } else {
+
+          // Build default JavaPackage for single module
+          apiPackage =
+              new JavaPackage(projectOperations.getFocusedTopLevelPackage()
+                  .getFullyQualifiedPackageName().concat(".service.api"),
+                  projectOperations.getFocusedModuleName());
+        }
+      }
+
+      // If user didn't specified some impl package, use default impl package
+      if (implPackage == null) {
+        if (projectOperations.isMultimoduleProject()) {
+
+          // Build default JavaPackage with module
+          for (String moduleName : projectOperations.getModuleNames()) {
+            if (moduleName.equals("service-impl")) {
+              Pom module = projectOperations.getPomFromModuleName(moduleName);
+              implPackage =
+                  new JavaPackage(typeLocationService.getTopLevelPackageForModule(module),
+                      moduleName);
+              break;
+            }
+          }
+
+          // Check if repository found
+          Validate.notNull(implPackage, "Couldn't find in project a default service.impl "
+              + "package. Please, use 'implPackage' option to specify it.");
+        } else {
+
+          // Build default JavaPackage for single module
+          implPackage =
+              new JavaPackage(projectOperations.getFocusedTopLevelPackage()
+                  .getFullyQualifiedPackageName().concat(".service.impl"),
+                  projectOperations.getFocusedModuleName());
+        }
+      }
+
       serviceOperations.addAllServices(apiPackage, implPackage);
     } else {
       serviceOperations.addService(domainType, repositoryType, interfaceType, implType);
@@ -331,7 +454,7 @@ public class ServiceCommands implements CommandMarker {
 
   /**
    * Replaces a JavaType fullyQualifiedName for a shorter name using '~' for TopLevelPackage
-   * 
+   *
    * @param cid ClassOrInterfaceTypeDetails of a JavaType
    * @param currentText String current text for option value
    * @return the String representing a JavaType with its name shortened
@@ -374,7 +497,7 @@ public class ServiceCommands implements CommandMarker {
     if ((StringUtils.isBlank(currentText) || auxString.startsWith(currentText))
         && StringUtils.contains(javaTypeFullyQualilfiedName, topLevelPackageString)) {
 
-      // Value is for autocomplete only or user wrote abbreviate value  
+      // Value is for autocomplete only or user wrote abbreviate value
       javaTypeString = auxString;
     } else {
 
@@ -411,47 +534,4 @@ public class ServiceCommands implements CommandMarker {
       return javaTypeConverter;
     }
   }
-
-  // ROO-3717: Service secure methods will be updated on future commits
-  /*@CliCommand(value = "service secure type", help = "Adds @RooService annotation to target type with options for authentication, authorization, and a permission evaluator")
-  public void secureService(
-          @CliOption(key = "interface", mandatory = true, help = "The java interface to apply this annotation to") final JavaType interfaceType,
-          @CliOption(key = "class", mandatory = false, help = "Implementation class for the specified interface") JavaType classType,
-          @CliOption(key = "entity", unspecifiedDefaultValue = "*", optionContext = PROJECT, mandatory = false, help = "The domain entity this service should expose") final JavaType domainType,
-          @CliOption(key = "requireAuthentication", unspecifiedDefaultValue = "false", specifiedDefaultValue = "ture", mandatory = false, help = "Whether or not users must be authenticated to use the service") final boolean requireAuthentication,
-          @CliOption(key = "authorizedRoles", mandatory = false, help = "The role authorized the use the methods in the service") final String role,
-          @CliOption(key = "usePermissionEvaluator", unspecifiedDefaultValue = "false", specifiedDefaultValue = "true", mandatory = false, help = "Whether or not to use a PermissionEvaluator") final boolean usePermissionEvaluator,
-          @CliOption(key = "useXmlConfiguration", mandatory = false, help = "When true, Spring Roo will configure services using XML.") Boolean useXmlConfiguration) {
-  
-      if (classType == null) {
-          classType = new JavaType(interfaceType.getFullyQualifiedTypeName()
-                  + "Impl");
-      }
-      if (useXmlConfiguration == null) {
-          useXmlConfiguration = Boolean.FALSE;
-      }
-      serviceOperations.setupService(interfaceType, classType, domainType,
-              requireAuthentication, role, usePermissionEvaluator,
-              useXmlConfiguration);
-  }
-  
-  @CliCommand(value = "service secure all", help = "Adds @RooService annotation to all entities with options for authentication, authorization, and a permission evaluator")
-  public void secureServiceAll(
-          @CliOption(key = "interfacePackage", mandatory = true, help = "The java interface package") final JavaPackage interfacePackage,
-          @CliOption(key = "classPackage", mandatory = false, help = "The java package of the implementation classes for the interfaces") JavaPackage classPackage,
-          @CliOption(key = "requireAuthentication", unspecifiedDefaultValue = "false", specifiedDefaultValue = "true", mandatory = false, help = "Whether or not users must be authenticated to use the service") final boolean requireAuthentication,
-          @CliOption(key = "authorizedRole", mandatory = false, help = "The role authorized the use the methods in the service (additional roles can be added after creation)") final String role,
-          @CliOption(key = "usePermissionEvaluator", unspecifiedDefaultValue = "false", specifiedDefaultValue = "true", mandatory = false, help = "Whether or not to use a PermissionEvaluator") final boolean usePermissionEvaluator,
-          @CliOption(key = "useXmlConfiguration", mandatory = false, help = "When true, Spring Roo will configure services using XML.") Boolean useXmlConfiguration) {
-  
-      if (classPackage == null) {
-          classPackage = interfacePackage;
-      }
-      if (useXmlConfiguration == null) {
-          useXmlConfiguration = Boolean.FALSE;
-      }
-      serviceOperations.setupAllServices(interfacePackage, classPackage,
-              requireAuthentication, role, usePermissionEvaluator,
-              useXmlConfiguration);
-  }*/
 }

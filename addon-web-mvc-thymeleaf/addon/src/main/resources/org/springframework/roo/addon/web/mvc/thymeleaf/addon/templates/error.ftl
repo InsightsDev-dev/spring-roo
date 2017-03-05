@@ -1,61 +1,48 @@
 <!DOCTYPE html>
-<html data-layout-decorator="layouts/default-layout">
-<head>
-    <meta charset="UTF-8" data-th-remove="all" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" data-th-remove="all" />
-    <meta name="viewport" content="width=device-width, initial-scale=1"
-      data-th-remove="all" />
-    <meta name="description"
-      content="Spring Roo"
-      data-th-remove="all" />
-    <meta name="author"
-      content="Spring Roo"
-      data-th-remove="all" />
-     <link data-th-href="@{/public/img/favicon.ico}" data-th-remove="all" rel="icon"
-       href="../../static/public/img/favicon.ico" />
+<html lang="en" data-layout-decorate="~{layouts/default-layout}">
+  <#if userManagedComponents?has_content && userManagedComponents["head"]??>
+  ${userManagedComponents["head"]}
+  <#else>
+  <head id="head">
 
-    <link rel="shortcut icon" href="../../static/public/img/favicon.ico"
-       data-th-remove="all" />
+      <title data-th-text="${r"#{"}label_error}">Error - Spring Roo application</title>
 
-    <link rel="apple-touch-icon" href="../../static/public/img/apple-touch-icon.png"
-       data-th-remove="all" />
+  </head>
+  </#if>
 
-    <title data-th-text="${r"#{"}label_error${r"}"}">Error</title>
+  <#if userManagedComponents?has_content && userManagedComponents["body"]??>
+    ${userManagedComponents["body"]}
+  <#else>
+  <body id="body">
 
-    <!-- Bootstrap -->
-    <link rel="stylesheet" type="text/css"
-      href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.css"
-      data-th-remove="all"></link>
+    <header role="banner">
+      <h1 data-th-text="${r"#{"}label_errorpage}">Error Page</h1>
+      <!-- Content replaced by layout of the page displayed -->
+    </header>
 
-    <!-- Roo CSS -->
-    <link rel="stylesheet" type="text/css"
-      href="../static/public/css/springroo.css"
-      data-th-remove="all" />
+    <!-- CONTAINER -->
+    <div class="container bg-container">
+    <!-- CONTENT -->
+      <!--
+        Only the inner content of the following tag "section" is included
+        within the template, in the section "content"
+      -->
+      <section data-layout-fragment="content">
+        <div class="alert alert-danger fade in" role="alert">
+          <h4 data-th-text="${r"#{"}label_errorpage_header}">¡Error!</h4>
+          <p>
+            <span data-th-text="${r"#"}{info_error}">An unexpected error has occurred</span>
+            (type=<span data-th-text="${r"$"}{error}">Bad</span>, status=<span data-th-text="${r"${status}"}">500</span>).
+          </p>
+          <div data-th-text="${r"$"}{message}"></div>
+        </div>
+      </section>
 
-    <!-- HTML5 shim y Respond.js para soporte de elementos HTML5 en IE8 y media queries -->
-    <!--[if lt IE 9]>
-       <script src="/public/js/html5shiv.min.js"></script>
-        <script src="/public/js/respond.min.js"></script>
-    <![endif]-->
+    <footer class="container">
+      <!-- Content replaced by layout of the page displayed -->
+    </footer>
 
-</head>
-<body>
-  <header>
-    <h1 data-th-text="${r"#{"}label_errorpage${r"}"}">Error Page</h1>
-  </header>
+  </body>
+  </#if>
 
-  <section data-layout-fragment="content">
-
-    <div class="alert alert-danger fade in" role="alert">
-      <h4 data-th-text="${r"#{"}label_errorpage_header${r"}"}">¡Error!</h4>
-      <p>
-        <span data-th-text="${r"#{info_error}"}">An error occurred</span>
-        (type=<span data-th-text="${r"${error}"}">Bad</span>, status=<span data-th-text="${r"${status}"}">500</span>).
-      </p>
-      <div data-text="${r"${message}"}"></div>
-    </div>
-
-  </section>
-  <footer> &copy; Powered By Spring Roo </footer>
-</body>
 </html>

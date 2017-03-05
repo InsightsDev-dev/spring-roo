@@ -20,7 +20,7 @@ import org.springframework.roo.shell.ShellContext;
 /**
  * Provides commands to include properties on application config properties
  * file.
- * 
+ *
  * @author Juan Carlos García
  * @since 2.0
  */
@@ -71,10 +71,19 @@ public class PropFileCommands implements CommandMarker {
   @CliCommand(value = "property add",
       help = "Adds or updates a particular property from application config properties file.")
   public void setProperty(
-      @CliOption(key = "key", mandatory = true, help = "The property key that should be changed") final String key,
-      @CliOption(key = "value", mandatory = true, help = "The new vale for this property key") final String value,
-      @CliOption(key = "module", mandatory = true, help = "Module where property will be added",
-          unspecifiedDefaultValue = ".", optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module,
+      @CliOption(key = "key", mandatory = true, help = "The property key that should be changed.") final String key,
+      @CliOption(key = "value", mandatory = true, help = "The new value for this property key.") final String value,
+      @CliOption(
+          key = "module",
+          mandatory = true,
+          help = "Module where property will be added. "
+              + "This option is mandatory if the focus is not set in an application module, that is, a "
+              + "module containing an `@SpringBootApplication` class. "
+              + "This option is available only if there are more than one application module and none of "
+              + "them is focused. "
+              + "Default if option not present: the unique 'application' module, or focused 'application'"
+              + " module.", unspecifiedDefaultValue = ".",
+          optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module,
       ShellContext shellContext) {
 
     propFileOperations.addProperty(module.getModuleName(), key, value, shellContext.getProfile(),
@@ -95,9 +104,18 @@ public class PropFileCommands implements CommandMarker {
   @CliCommand(value = "property remove",
       help = "Removes a particular property from application config properties file.")
   public void removeProperty(
-      @CliOption(key = {"key"}, mandatory = true, help = "The property key that should be removed") final String key,
-      @CliOption(key = "module", mandatory = true, help = "Module where property will be removed",
-          unspecifiedDefaultValue = ".", optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module,
+      @CliOption(key = {"key"}, mandatory = true, help = "The property key that should be removed.") final String key,
+      @CliOption(
+          key = "module",
+          mandatory = true,
+          help = "Module where property will be removed."
+              + "This option is mandatory if the focus is not set in an application module, that is, a "
+              + "module containing an `@SpringBootApplication` class. "
+              + "This option is available only if there are more than one application module and none of "
+              + "them is focused. "
+              + "Default if option not present: the unique 'application' module, or focused 'application'"
+              + " module.", unspecifiedDefaultValue = ".",
+          optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module,
       ShellContext shellContext) {
 
     propFileOperations.removeProperty(module.getModuleName(), key, shellContext.getProfile());
@@ -115,10 +133,19 @@ public class PropFileCommands implements CommandMarker {
   }
 
   @CliCommand(value = "property list",
-      help = "List all properties from application config properties file.")
-  public void listProperties(@CliOption(key = "module", mandatory = true,
-      unspecifiedDefaultValue = ".", help = "Module which properties will be listed",
-      optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module,
+      help = "Lists all properties from an application config properties file.")
+  public void listProperties(
+      @CliOption(
+          key = "module",
+          mandatory = true,
+          unspecifiedDefaultValue = ".",
+          help = "Module which properties will be listed. "
+              + "This option is mandatory if the focus is not set in an application module, that is, a "
+              + "module containing an `@SpringBootApplication` class. "
+              + "This option is available only if there are more than one application module and none of "
+              + "them is focused. "
+              + "Default if option not present: the unique 'application' module, or focused 'application'"
+              + " module.", optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module,
       ShellContext shellContext) {
 
     propFileOperations.listProperties(module.getModuleName(), shellContext.getProfile());

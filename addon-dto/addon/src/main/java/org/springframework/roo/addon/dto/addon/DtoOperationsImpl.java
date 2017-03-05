@@ -5,6 +5,8 @@ import org.apache.commons.lang3.Validate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
+import org.osgi.framework.BundleContext;
+import org.osgi.service.component.ComponentContext;
 import org.springframework.roo.classpath.PhysicalTypeCategory;
 import org.springframework.roo.classpath.PhysicalTypeIdentifier;
 import org.springframework.roo.classpath.TypeLocationService;
@@ -22,6 +24,7 @@ import org.springframework.roo.classpath.operations.jsr303.CollectionField;
 import org.springframework.roo.classpath.operations.jsr303.DateField;
 import org.springframework.roo.classpath.operations.jsr303.ListField;
 import org.springframework.roo.classpath.operations.jsr303.SetField;
+import org.springframework.roo.classpath.persistence.PersistenceMemberLocator;
 import org.springframework.roo.classpath.scanner.MemberDetailsScanner;
 import org.springframework.roo.model.DataType;
 import org.springframework.roo.model.JavaSymbolName;
@@ -35,14 +38,16 @@ import org.springframework.roo.project.LogicalPath;
 import org.springframework.roo.project.Path;
 import org.springframework.roo.project.PathResolver;
 import org.springframework.roo.project.ProjectOperations;
+import org.springframework.roo.project.Property;
 import org.springframework.roo.shell.ShellContext;
 import org.springframework.roo.support.logging.HandlerUtils;
+import org.springframework.roo.support.osgi.ServiceInstaceManager;
 
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -60,6 +65,21 @@ import java.util.logging.Logger;
 public class DtoOperationsImpl implements DtoOperations {
 
   protected final static Logger LOGGER = HandlerUtils.getLogger(DtoOperationsImpl.class);
+
+  private static final Property SPRINGLETS_VERSION_PROPERTY = new Property("springlets.version",
+      "1.2.0.RC1");
+  private static final Dependency SPRINGLETS_CONTEXT_DEPENDENCY = new Dependency("io.springlets",
+      "springlets-context", "${springlets.version}");
+
+  //------------ OSGi component attributes ----------------
+  private BundleContext context;
+
+  private ServiceInstaceManager serviceInstaceManager = new ServiceInstaceManager();
+
+  protected void activate(final ComponentContext context) {
+    this.context = context.getBundleContext();
+    serviceInstaceManager.activate(this.context);
+  }
 
   @Reference
   private ProjectOperations projectOperations;
@@ -86,13 +106,17 @@ public class DtoOperationsImpl implements DtoOperations {
 
   @Override
   public void createDto(JavaType name, boolean immutable, boolean utilityMethods,
-      boolean serializable) {
+      boolean serializable, String formatExpression, String formatMessage) {
 
     Validate.isTrue(!JdkJavaType.isPartOfJavaLang(name.getSimpleTypeName()),
         "Class name '%s' is part of java.lang", name.getSimpleTypeName());
 
     // Set focus on dto module
     projectOperations.setModule(projectOperations.getPomFromModuleName(name.getModule()));
+
+    // Add springlets-context dependency
+    projectOperations.addDependency(name.getModule(), SPRINGLETS_CONTEXT_DEPENDENCY);
+    projectOperations.addProperty("", SPRINGLETS_VERSION_PROPERTY);
 
     // Create file
     final String declaredByMetadataId =
@@ -110,6 +134,18 @@ public class DtoOperationsImpl implements DtoOperations {
       rooDtoAnnotation.addBooleanAttribute("immutable", immutable);
       rooJavaBeanAnnotation.addBooleanAttribute("settersByDefault", false);
     }
+
+    // ROO-3868: New entity visualization support using a DTO
+    // Check for each attribute individually
+    if (StringUtils.isNotBlank(formatExpression)) {
+      rooDtoAnnotation.addStringAttribute("formatExpression", formatExpression);
+
+    }
+
+    if (StringUtils.isNotBlank(formatMessage)) {
+      rooDtoAnnotation.addStringAttribute("formatMessage", formatMessage);
+    }
+
     cidBuilder.addAnnotation(rooDtoAnnotation);
     cidBuilder.addAnnotation(rooJavaBeanAnnotation);
 
@@ -134,23 +170,38 @@ public class DtoOperationsImpl implements DtoOperations {
   }
 
   @Override
-  public void createProjection(JavaType entity, JavaType name, String fields, String suffix) {
+  public void createProjection(JavaType entity, JavaType name, String fields, String suffix,
+      String formatExpression, String formatMessage) {
     Validate.notNull(name, "Use --class to select the name of the Projection.");
+
+    // TODO: Validate fields for excluding entity collection, transient and 
+    // static fields from operations (already doing when comming from commands).
 
     // Set focus on projection module
     projectOperations.setModule(projectOperations.getPomFromModuleName(name.getModule()));
 
-    Map<String, FieldMetadata> fieldsToAdd = new HashMap<String, FieldMetadata>();
+    // Add springlets-context dependency
+    projectOperations.addDependency(name.getModule(), SPRINGLETS_CONTEXT_DEPENDENCY);
+    projectOperations.addProperty("", SPRINGLETS_VERSION_PROPERTY);
+
+    Map<String, FieldMetadata> fieldsToAdd = new LinkedHashMap<String, FieldMetadata>();
     boolean onlyMainEntityFields = true;
     if (fields != null) {
       onlyMainEntityFields = false;
+
+      // Check that id field has been included. If not, include it.
+      fields = checkAndAddIdField(entity, fields);
       fieldsToAdd = buildFieldsFromString(fields, entity);
     } else {
       List<FieldMetadata> allFields =
           memberDetailsScanner.getMemberDetails(this.getClass().getName(),
               typeLocationService.getTypeDetails(entity)).getFields();
       for (FieldMetadata field : allFields) {
-        fieldsToAdd.put(field.getFieldName().getSymbolName(), field);
+
+        // Add only valid fields
+        if (isFieldValidForProjection(field)) {
+          fieldsToAdd.put(field.getFieldName().getSymbolName(), field);
+        }
       }
     }
 
@@ -202,6 +253,18 @@ public class DtoOperationsImpl implements DtoOperations {
     }
     projectionAnnotation.addAttribute(new ArrayAttributeValue<StringAttributeValue>(
         new JavaSymbolName("fields"), fieldNames));
+
+    // ROO-3868: New entity visualization support using a Projection
+    // Check for each attribute individually
+    if (StringUtils.isNotBlank(formatExpression)) {
+      projectionAnnotation.addStringAttribute("formatExpression", formatExpression);
+
+    }
+
+    if (StringUtils.isNotBlank(formatMessage)) {
+      projectionAnnotation.addStringAttribute("formatMessage", formatMessage);
+    }
+
     projectionBuilder.addAnnotation(projectionAnnotation);
 
     // Build and save changes to disk
@@ -242,7 +305,7 @@ public class DtoOperationsImpl implements DtoOperations {
           pathResolver.getCanonicalPath(projectionType.getModule(), Path.SRC_MAIN_JAVA,
               projectionType);
       if (!fileManager.exists(entityFilePathIdentifier)) {
-        createProjection(entity.getType(), projectionType, null, suffix);
+        createProjection(entity.getType(), projectionType, null, suffix, null, null);
       }
     }
   }
@@ -252,12 +315,13 @@ public class DtoOperationsImpl implements DtoOperations {
    * 
    * @param fieldsString the fields provided by user.
    * @param entity the associated entity to use for searching the fields.
-   * @return List<FieldMetadata> with the fields to add in the Projection.
+   * @return Map<String, FieldMetadata> with the field name to add in the Projection 
+   *            and its metadata.
    */
-  private Map<String, FieldMetadata> buildFieldsFromString(String fieldsString, JavaType entity) {
+  public Map<String, FieldMetadata> buildFieldsFromString(String fieldsString, JavaType entity) {
 
     // Create Map for storing FieldMetadata and it's future new name
-    Map<String, FieldMetadata> fieldsToAdd = new HashMap<String, FieldMetadata>();
+    Map<String, FieldMetadata> fieldsToAdd = new LinkedHashMap<String, FieldMetadata>();
 
     // Create array of field names from command String
     fieldsString = fieldsString.trim();
@@ -275,6 +339,7 @@ public class DtoOperationsImpl implements DtoOperations {
       // Iterate over all entity fields
       for (FieldMetadata field : allFields) {
         if (field.getFieldName().getSymbolName().equals(fields[i])) {
+
           // If found, add field to returned map
           fieldsToAdd.put(field.getFieldName().getSymbolName(), field);
           found = true;
@@ -357,6 +422,42 @@ public class DtoOperationsImpl implements DtoOperations {
   }
 
   /**
+   * Check if provided fields contain the related entity id field and otherwise 
+   * adds it to the Map.
+   * 
+   * @param entity JavaType the Projection related entity.
+   * @param fieldsString the String with the fields received from operation
+   * @return the String with the fields to add to Projection.
+   */
+  private String checkAndAddIdField(JavaType entity, String fieldsString) {
+    List<FieldMetadata> identifierFields =
+        getPersistenceMemberLocator().getIdentifierFields(entity);
+    String[] fieldsProvided = fieldsString.split(",");
+    for (FieldMetadata idField : identifierFields) {
+      boolean fieldIsInProjection = false;
+      for (String field : fieldsProvided) {
+        if (field.equals(idField.getFieldName().getSymbolName())) {
+          fieldIsInProjection = true;
+          break;
+        }
+      }
+
+      if (!fieldIsInProjection) {
+
+        // Add to fields String, which will be used to create the annotation
+        fieldsString = idField.getFieldName().getSymbolName().concat(",").concat(fieldsString);
+        LOGGER.info(String.format(
+            "INFO: You haven't included the identifier field/s of the entity '%s' in "
+                + "your projection, which is necessary to be able to use this projection "
+                + "in the view layer. But don't worry, Spring Roo has included it automatically.",
+            entity.getSimpleTypeName()));
+      }
+    }
+
+    return fieldsString;
+  }
+
+  /**
    * Removes persistence annotations of provided fields and adds them to a 
    * ClassOrInterfaceTypeDetailsBuilder representing a Projection in construction. 
    * Also adds final modifier to fields if required.
@@ -429,11 +530,10 @@ public class DtoOperationsImpl implements DtoOperations {
           // Add validation dependency
           projectOperations.addDependency(projectionBuilder.getName().getModule(), new Dependency(
               "javax.validation", "validation-api", null));
+        } else if (annotation.getAnnotationType().equals(RooJavaType.ROO_JPA_RELATION)) {
+          fieldBuilder.removeAnnotation(annotation.getAnnotationType());
         }
       }
-
-      projectOperations.addDependency(projectionBuilder.getName().getModule(), new Dependency(
-          "org.springframework.boot", "spring-boot-starter-data-jpa", null));
 
       fieldBuilder.setModifier(Modifier.PRIVATE);
 
@@ -443,6 +543,44 @@ public class DtoOperationsImpl implements DtoOperations {
       // Add field to DTO
       projectionBuilder.addField(projectionField);
     }
+  }
+
+  private boolean isFieldValidForProjection(FieldMetadata field) {
+
+    // Exclude static fields
+    if (Modifier.isStatic(field.getModifier())) {
+      return false;
+    }
+
+    // Exclude transient fields
+    if (field.getAnnotation(JpaJavaType.TRANSIENT) != null) {
+      return false;
+    }
+
+    // Exclude entity collection fields
+    JavaType fieldType = field.getFieldType();
+    if (fieldType.isCommonCollectionType()) {
+      boolean isEntityCollectionField = false;
+      List<JavaType> parameters = fieldType.getParameters();
+      for (JavaType parameter : parameters) {
+        if (typeLocationService.getTypeDetails(parameter) != null
+            && typeLocationService.getTypeDetails(parameter).getAnnotation(
+                RooJavaType.ROO_JPA_ENTITY) != null) {
+          isEntityCollectionField = true;
+          break;
+        }
+      }
+
+      if (isEntityCollectionField) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  protected PersistenceMemberLocator getPersistenceMemberLocator() {
+    return serviceInstaceManager.getServiceInstance(this, PersistenceMemberLocator.class);
   }
 
 }

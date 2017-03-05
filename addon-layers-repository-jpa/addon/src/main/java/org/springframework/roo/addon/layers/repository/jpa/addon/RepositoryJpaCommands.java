@@ -3,6 +3,7 @@ package org.springframework.roo.addon.layers.repository.jpa.addon;
 import static org.springframework.roo.shell.OptionContexts.PROJECT;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Validate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
@@ -13,12 +14,14 @@ import org.osgi.service.component.ComponentContext;
 import org.springframework.roo.addon.field.addon.FieldCommands;
 import org.springframework.roo.classpath.TypeLocationService;
 import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
+import org.springframework.roo.converters.JavaPackageConverter;
 import org.springframework.roo.converters.LastUsed;
 import org.springframework.roo.model.JavaPackage;
 import org.springframework.roo.model.JavaType;
 import org.springframework.roo.model.RooJavaType;
 import org.springframework.roo.project.LogicalPath;
 import org.springframework.roo.project.ProjectOperations;
+import org.springframework.roo.project.maven.Pom;
 import org.springframework.roo.shell.CliAvailabilityIndicator;
 import org.springframework.roo.shell.CliCommand;
 import org.springframework.roo.shell.CliOption;
@@ -38,9 +41,10 @@ import java.util.logging.Logger;
 
 /**
  * Commands for the JPA repository add-on.
- * 
+ *
  * @author Stefan Schmidt
  * @author Juan Carlos García
+ * @author Sergio Clares
  * @since 1.2.0
  */
 @Component
@@ -110,12 +114,18 @@ public class RepositoryJpaCommands implements CommandMarker {
     for (String module : modules) {
       if (StringUtils.isNotBlank(module)
           && !module.equals(projectOperations.getFocusedModule().getModuleName())) {
-        allPossibleValues.add(module.concat(LogicalPath.MODULE_PATH_SEPARATOR).concat("~."));
+        allPossibleValues.add(module.concat(LogicalPath.MODULE_PATH_SEPARATOR)
+            .concat(JavaPackageConverter.TOP_LEVEL_PACKAGE_SYMBOL).concat("."));
+      } else if (!projectOperations.isMultimoduleProject()) {
+
+        // Add only JavaPackage completion
+        allPossibleValues.add(String.format("%s.repository.",
+            JavaPackageConverter.TOP_LEVEL_PACKAGE_SYMBOL));
       }
     }
 
     // Always add base package
-    allPossibleValues.add("~.");
+    allPossibleValues.add(JavaPackageConverter.TOP_LEVEL_PACKAGE_SYMBOL.concat("."));
 
     return allPossibleValues;
   }
@@ -123,9 +133,9 @@ public class RepositoryJpaCommands implements CommandMarker {
   /**
    * This indicator return all Projection classes associated to an entity specified
    * in the 'entity' parameter.
-   * 
+   *
    * @param shellContext the Roo ShellContext.
-   * @return List<String> with fullyQualifiedNames of each associated Projection. 
+   * @return List<String> with fullyQualifiedNames of each associated Projection.
    */
   @CliOptionAutocompleteIndicator(
       command = "repository jpa",
@@ -159,13 +169,10 @@ public class RepositoryJpaCommands implements CommandMarker {
   }
 
   /**
-   * This indicator says if --package parameter should be visible or not
+   * This indicator says if --defaultReturnType parameter should be visible or not.
    *
-   * If --all parameter has not been specified, --package parameter will not be visible
-   * to prevent conflicts.
-   * 
    * @param context ShellContext
-   * @return
+   * @return false if domain entity specified in --entity parameter has no associated Projections.
    */
   @CliOptionVisibilityIndicator(
       params = "defaultReturnType",
@@ -189,6 +196,7 @@ public class RepositoryJpaCommands implements CommandMarker {
       if (projection.getAnnotation(RooJavaType.ROO_ENTITY_PROJECTION).getAttribute("entity")
           .getValue().equals(entity)) {
         visible = true;
+        break;
       }
     }
 
@@ -196,27 +204,11 @@ public class RepositoryJpaCommands implements CommandMarker {
   }
 
   /**
-   * This indicator says if --package parameter should be mandatory or not
-   *
-   * If --all parameter has been specified, --package parameter will be mandatory.
-   * 
-   * @param context ShellContext
-   * @return
-   */
-  @CliOptionMandatoryIndicator(params = "package", command = "repository jpa")
-  public boolean isPackageParameterMandatory(ShellContext context) {
-    if (context.getParameters().containsKey("all")) {
-      return true;
-    }
-    return false;
-  }
-
-  /**
    * This indicator says if --interface parameter should be mandatory or not
    *
    * If --entity parameter has been specified and we are working under multimodule
    * project, --interface parameter will be mandatory.
-   * 
+   *
    * @param context ShellContext
    * @return
    */
@@ -233,7 +225,7 @@ public class RepositoryJpaCommands implements CommandMarker {
    *
    * If --all parameter has not been specified, --package parameter will not be visible
    * to prevent conflicts.
-   * 
+   *
    * @param context ShellContext
    * @return
    */
@@ -251,7 +243,7 @@ public class RepositoryJpaCommands implements CommandMarker {
    *
    * If --entity parameter has been specified, --all parameter will not be visible
    * to prevent conflicts.
-   * 
+   *
    * @param context ShellContext
    * @return
    */
@@ -266,9 +258,9 @@ public class RepositoryJpaCommands implements CommandMarker {
 
   /**
    * This indicator says if --interface and --defaultSearchResult parameter are visible.
-   * 
+   *
    * If --entity is specified, --interface and --defaultSearchResult will be visible
-   * 
+   *
    * @param context ShellContext
    * @return
    */
@@ -285,9 +277,9 @@ public class RepositoryJpaCommands implements CommandMarker {
 
   /**
    * This indicator says if --entity parameter is visible.
-   * 
+   *
    * If --all is specified, --entity won't be visible
-   * 
+   *
    * @param context ShellContext
    * @return
    */
@@ -300,35 +292,105 @@ public class RepositoryJpaCommands implements CommandMarker {
     return true;
   }
 
-  @CliCommand(value = "repository jpa",
-      help = "Generates new Spring Data repository for specified entity.")
+  @CliCommand(
+      value = "repository jpa",
+      help = "Generates new Spring Data repository for specified entity or for all entities in generated "
+          + "project.")
   public void repository(
       @CliOption(
           key = "all",
           mandatory = false,
           specifiedDefaultValue = "true",
           unspecifiedDefaultValue = "false",
-          help = "Indicates if developer wants to generate repositories for every entity of current project ") boolean all,
-      @CliOption(key = "interface", mandatory = true,
-          help = "The java Spring Data repository to generate.") final JavaType interfaceType,
-      @CliOption(key = "entity", mandatory = false, optionContext = PROJECT,
-          help = "The domain entity this repository should expose") final JavaType domainType,
-      @CliOption(key = "defaultReturnType", mandatory = false,
-          help = "The findAll finder return type. Should be a Projection class associated "
-              + "to the entity specified in '--entity'.") JavaType defaultReturnType,
-      @CliOption(key = "package", mandatory = true,
-          help = "The package where repositories will be generated") final JavaPackage repositoriesPackage) {
+          help = "Indicates if developer wants to generate repositories for every entity of current "
+              + "project. "
+              + "This option is mandatory if `--entity` is not specified. Otherwise, using `--entity` "
+              + "will cause the parameter `--all` won't be available. "
+              + "Default if option present: `true`; default if option not present: `false`.") boolean all,
+      @CliOption(
+          key = "entity",
+          mandatory = false,
+          optionContext = PROJECT,
+          help = "The domain entity this repository should manage. When working on a single module "
+              + "project, simply specify the name of the entity. If you consider it necessary, you can "
+              + "also specify the package. Ex.: `--class ~.domain.MyEntity` (where `~` is the base package). "
+              + "When working with multiple modules, you should specify the name of the entity and the "
+              + "module where it is. Ex.: `--class model:~.domain.MyEntity`. If the module is not specified, "
+              + "it is assumed that the entity is in the module which has the focus. "
+              + "Possible values are: any of the entities in the project. "
+              + "This option is mandatory if `--all` is not specified. Otherwise, using `--all` "
+              + "will cause the parameter `--entity` won't be available.") final JavaType domainType,
+      @CliOption(
+          key = "interface",
+          mandatory = true,
+          help = "The java Spring Data repository to generate. When working on a single module "
+              + "project, simply specify the name of the class. If you consider it necessary, you can "
+              + "also specify the package. Ex.: `--class ~.domain.MyClass` (where `~` is the base package). "
+              + "When working with multiple modules, you should specify the name of the class and the "
+              + "module where it is. Ex.: `--class model:~.domain.MyClass`. If the module is not specified, "
+              + "it is assumed that the class is in the module which has the focus. "
+              + "This option is mandatory if `--entity` has been already specified and the project is "
+              + "multi-module. "
+              + "This option is available only when `--entity` has been specified.") final JavaType interfaceType,
+      @CliOption(
+          key = "defaultReturnType",
+          mandatory = false,
+          help = "The default return type which this repository will have for all finders, including those"
+              + "created by default. The default return type should be a Projection class associated to "
+              + "the entity specified in `--entity` parameter. "
+              + "Possible values are: any of the projections associated to the entity in `--entity` option. "
+              + "This option is not available if domain entity specified in `--entity` parameter has no "
+              + "associated Projections. "
+              + "Default: the entity specified in the `entity` option.") JavaType defaultReturnType,
+      @CliOption(
+          key = "package",
+          mandatory = false,
+          help = "The package where repositories will be generated. In multi-module project you should "
+              + "specify the module name before the package name. "
+              + "Ex.: `--package model:org.springframework.roo` but, if module name is not present, "
+              + "the Roo Shell focused module will be used. "
+              + "This option is not available if `--all` option has not been specified. "
+              + "Default value if not present: `~.repository` package, or 'repository:~.' if multi-module "
+              + "project.") JavaPackage repositoriesPackage) {
 
     if (all) {
+
+      // If user didn't specified some JavaPackage, use default repository package
+      if (repositoriesPackage == null) {
+        if (projectOperations.isMultimoduleProject()) {
+
+          // Build default JavaPackage with module
+          for (String moduleName : projectOperations.getModuleNames()) {
+            if (moduleName.equals("repository")) {
+              Pom module = projectOperations.getPomFromModuleName(moduleName);
+              repositoriesPackage =
+                  new JavaPackage(typeLocationService.getTopLevelPackageForModule(module),
+                      moduleName);
+              break;
+            }
+          }
+
+          // Check if repository found
+          Validate.notNull(repositoriesPackage, "Couldn't find in project a default 'repository' "
+              + "module. Please, use 'package' option to specify module and package.");
+        } else {
+
+          // Build default JavaPackage for single module
+          repositoriesPackage =
+              new JavaPackage(projectOperations.getFocusedTopLevelPackage()
+                  .getFullyQualifiedPackageName().concat(".repository"),
+                  projectOperations.getFocusedModuleName());
+        }
+      }
       repositoryJpaOperations.generateAllRepositories(repositoriesPackage);
     } else {
-      repositoryJpaOperations.addRepository(interfaceType, domainType, defaultReturnType);
+      repositoryJpaOperations.addRepository(interfaceType, domainType, defaultReturnType, true);
     }
   }
 
   /**
    * Replaces a JavaType fullyQualifiedName for a shorter name using '~' for TopLevelPackage
-   * 
+   *
    * @param cid ClassOrInterfaceTypeDetails of a JavaType
    * @param currentText String current text for option value
    * @return the String representing a JavaType with its name shortened
@@ -371,7 +433,7 @@ public class RepositoryJpaCommands implements CommandMarker {
     if ((StringUtils.isBlank(currentText) || auxString.startsWith(currentText))
         && StringUtils.contains(javaTypeFullyQualilfiedName, topLevelPackageString)) {
 
-      // Value is for autocomplete only or user wrote abbreviate value  
+      // Value is for autocomplete only or user wrote abbreviate value
       javaTypeString = auxString;
     } else {
 
@@ -383,11 +445,11 @@ public class RepositoryJpaCommands implements CommandMarker {
   }
 
   /**
-   * Tries to obtain JavaType indicated in command or which has the focus 
+   * Tries to obtain JavaType indicated in command or which has the focus
    * in the Shell
-   * 
+   *
    * @param shellContext the Roo Shell context
-   * @return JavaType or null if no class has the focus or no class is 
+   * @return JavaType or null if no class has the focus or no class is
    * specified in the command
    */
   private JavaType getTypeFromEntityParam(ShellContext shellContext) {

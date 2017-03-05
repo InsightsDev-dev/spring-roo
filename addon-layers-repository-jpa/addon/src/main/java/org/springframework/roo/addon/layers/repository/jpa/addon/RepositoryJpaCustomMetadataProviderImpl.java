@@ -4,10 +4,15 @@ import static org.springframework.roo.model.RooJavaType.ROO_REPOSITORY_JPA_CUSTO
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Service;
+import org.osgi.framework.BundleContext;
 import org.osgi.service.component.ComponentContext;
 import org.springframework.roo.addon.javabean.addon.JavaBeanMetadata;
+import org.springframework.roo.addon.jpa.addon.JpaOperations;
+import org.springframework.roo.addon.jpa.addon.entity.JpaEntityMetadata.RelationInfo;
+import org.springframework.roo.addon.layers.repository.jpa.addon.finder.parser.FinderMethod;
 import org.springframework.roo.addon.layers.repository.jpa.annotations.RooJpaRepositoryCustom;
 import org.springframework.roo.classpath.PhysicalTypeIdentifier;
 import org.springframework.roo.classpath.PhysicalTypeMetadata;
@@ -17,10 +22,11 @@ import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
 import org.springframework.roo.classpath.details.FieldMetadata;
 import org.springframework.roo.classpath.details.ItdTypeDetails;
 import org.springframework.roo.classpath.details.MemberHoldingTypeDetails;
+import org.springframework.roo.classpath.details.annotations.AnnotationAttributeValue;
+import org.springframework.roo.classpath.details.annotations.NestedAnnotationAttributeValue;
 import org.springframework.roo.classpath.itd.AbstractMemberDiscoveringItdMetadataProvider;
 import org.springframework.roo.classpath.itd.ItdTypeDetailsProvidingMetadataItem;
 import org.springframework.roo.classpath.layers.LayerTypeMatcher;
-import org.springframework.roo.classpath.scanner.MemberDetails;
 import org.springframework.roo.metadata.MetadataDependencyRegistry;
 import org.springframework.roo.metadata.MetadataIdentificationUtils;
 import org.springframework.roo.metadata.internal.MetadataDependencyRegistryTracker;
@@ -30,7 +36,8 @@ import org.springframework.roo.model.RooJavaType;
 import org.springframework.roo.project.LogicalPath;
 import org.springframework.roo.support.logging.HandlerUtils;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,9 +46,10 @@ import java.util.logging.Logger;
 
 /**
  * Implementation of {@link RepositoryJpaCustomMetadataProvider}.
- * 
+ *
  * @author Paula Navarro
  * @author Juan Carlos García
+ * @author Sergio Clares
  * @since 2.0
  */
 @Component
@@ -65,7 +73,7 @@ public class RepositoryJpaCustomMetadataProviderImpl extends
    * <ul>
    * <li>Create and open the {@link MetadataDependencyRegistryTracker}.</li>
    * <li>Create and open the {@link CustomDataKeyDecoratorTracker}.</li>
-   * <li>Registers {@link RooJavaType#ROO_REPOSITORY_JPA_CUSTOM} as additional 
+   * <li>Registers {@link RooJavaType#ROO_REPOSITORY_JPA_CUSTOM} as additional
    * JavaType that will trigger metadata registration.</li>
    * <li>Set ensure the governor type details represent a class.</li>
    * </ul>
@@ -73,25 +81,26 @@ public class RepositoryJpaCustomMetadataProviderImpl extends
   @Override
   @SuppressWarnings("unchecked")
   protected void activate(final ComponentContext cContext) {
-    context = cContext.getBundleContext();
+    super.activate(cContext);
+    BundleContext localContext = cContext.getBundleContext();
     super.setDependsOnGovernorBeingAClass(false);
     this.registryTracker =
-        new MetadataDependencyRegistryTracker(context, this,
+        new MetadataDependencyRegistryTracker(localContext, this,
             PhysicalTypeIdentifier.getMetadataIdentiferType(), getProvidesType());
     this.registryTracker.open();
 
     addMetadataTrigger(ROO_REPOSITORY_JPA_CUSTOM);
 
     this.keyDecoratorTracker =
-        new CustomDataKeyDecoratorTracker(context, getClass(), new LayerTypeMatcher(
+        new CustomDataKeyDecoratorTracker(localContext, getClass(), new LayerTypeMatcher(
             ROO_REPOSITORY_JPA_CUSTOM, new JavaSymbolName(RooJpaRepositoryCustom.ENTITY_ATTRIBUTE)));
     this.keyDecoratorTracker.open();
   }
 
   /**
-   * This service is being deactivated so unregister upstream-downstream 
+   * This service is being deactivated so unregister upstream-downstream
    * dependencies, triggers, matchers and listeners.
-   * 
+   *
    * @param context
    */
   protected void deactivate(final ComponentContext context) {
@@ -156,76 +165,55 @@ public class RepositoryJpaCustomMetadataProviderImpl extends
 
     // Getting repository custom
     JavaType entity = annotationValues.getEntity();
-
     Validate
         .notNull(
             entity,
             "ERROR: Repository custom interface should be contain an entity on @RooJpaRepositoryCustom annotation");
 
-    // Getting findAll results type
-    JavaType searchResult = annotationValues.getDefaultReturnType();
+    final ClassOrInterfaceTypeDetails repositoryClass =
+        getRepositoryJpaLocator().getRepository(entity);
+    final String repositoryMedatadataId = RepositoryJpaMetadata.createIdentifier(repositoryClass);
+    registerDependency(repositoryMedatadataId, metadataIdentificationString);
+    RepositoryJpaMetadata repositoryMetadata = getMetadataService().get(repositoryMedatadataId);
 
-    Validate
-        .notNull(
-            searchResult,
-            "ERROR: Repository custom interface should contain a defaultSearchResult on @RooJpaRepositoryCustom annotation");
-
-
-    // Getting the class annotated with @RooGlobalSearch
-    Set<ClassOrInterfaceTypeDetails> globalSearchDetails =
-        getTypeLocationService().findClassesOrInterfaceDetailsWithAnnotation(
-            RooJavaType.ROO_GLOBAL_SEARCH);
-
-    if (globalSearchDetails.size() == 0) {
-      throw new RuntimeException("ERROR: Not found a class annotated with @RooGlobalSearch");
+    // This metadata is not available yet.
+    if (repositoryMetadata == null) {
+      return null;
     }
-
-    JavaType globalSearch = globalSearchDetails.iterator().next().getType();
 
     // Add dependency between modules
     ClassOrInterfaceTypeDetails cid = governorPhysicalTypeMetadata.getMemberHoldingTypeDetails();
-    getTypeLocationService().addModuleDependency(cid.getName().getModule(), entity);
-    getTypeLocationService().addModuleDependency(cid.getName().getModule(), searchResult);
-    getTypeLocationService().addModuleDependency(cid.getName().getModule(), globalSearch);
+    String module = cid.getName().getModule();
+    getTypeLocationService().addModuleDependency(module, entity);
+    getTypeLocationService().addModuleDependency(module, repositoryMetadata.getDefaultReturnType());
 
-    // Getting referenced fields
-    Map<FieldMetadata, JavaType> referencedFields = new HashMap<FieldMetadata, JavaType>();
-    MemberDetails entityDetails = getMemberDetails(entity);
-    List<FieldMetadata> entityFields = entityDetails.getFields();
+    // Get field which entity is field part
+    List<Pair<FieldMetadata, RelationInfo>> relationsAsChild =
+        getJpaOperations().getFieldChildPartOfRelation(entity);
 
-    for (FieldMetadata field : entityFields) {
-      ClassOrInterfaceTypeDetails fieldTypeDetails =
-          getTypeLocationService().getTypeDetails(field.getFieldType());
-      // Get only reference fields
-      if (fieldTypeDetails != null
-          && fieldTypeDetails.getAnnotation(RooJavaType.ROO_JPA_ENTITY) != null) {
-
-        List<FieldMetadata> identifierFields =
-            getPersistenceMemberLocator().getIdentifierFields(field.getFieldType());
-
-        if (identifierFields.isEmpty()) {
-          continue;
-        }
-        referencedFields.put(field, identifierFields.get(0).getFieldType());
-
-        // Add dependency between modules
-        getTypeLocationService().addModuleDependency(cid.getName().getModule(),
-            field.getFieldType());
-      }
+    for (Pair<FieldMetadata, RelationInfo> fieldInfo : relationsAsChild) {
+      // Add dependency between modules
+      getTypeLocationService().addModuleDependency(module, fieldInfo.getLeft().getFieldType());
     }
 
     // Register dependency between JavaBeanMetadata and this one
-    final LogicalPath logicalPath =
-        PhysicalTypeIdentifier.getPath(getTypeLocationService().getTypeDetails(entity)
-            .getDeclaredByMetadataId());
-    final String javaBeanMetadataKey =
-        JavaBeanMetadata.createIdentifier(
-            getTypeLocationService().getTypeDetails(entity).getType(), logicalPath);
+    final ClassOrInterfaceTypeDetails entityDetails =
+        getTypeLocationService().getTypeDetails(entity);
+    final String javaBeanMetadataKey = JavaBeanMetadata.createIdentifier(entityDetails);
     registerDependency(javaBeanMetadataKey, metadataIdentificationString);
 
+
     return new RepositoryJpaCustomMetadata(metadataIdentificationString, aspectName,
-        governorPhysicalTypeMetadata, annotationValues, entity, searchResult, globalSearch,
-        referencedFields);
+        governorPhysicalTypeMetadata, annotationValues, entity, repositoryMetadata,
+        relationsAsChild);
+  }
+
+  private JpaOperations getJpaOperations() {
+    return getServiceManager().getServiceInstance(this, JpaOperations.class);
+  }
+
+  private RepositoryJpaLocator getRepositoryJpaLocator() {
+    return getServiceManager().getServiceInstance(this, RepositoryJpaLocator.class);
   }
 
   protected void registerDependency(final String upstreamDependency,
@@ -240,7 +228,6 @@ public class RepositoryJpaCustomMetadataProviderImpl extends
       getMetadataDependencyRegistry().registerDependency(upstreamDependency, downStreamDependency);
     }
   }
-
 
   public String getProvidesType() {
     return RepositoryJpaCustomMetadata.getMetadataIdentiferType();

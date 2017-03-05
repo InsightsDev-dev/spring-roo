@@ -19,7 +19,6 @@ import org.springframework.roo.classpath.TypeManagementService;
 import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
 import org.springframework.roo.classpath.details.FieldMetadata;
 import org.springframework.roo.classpath.operations.Cardinality;
-import org.springframework.roo.classpath.operations.Cascade;
 import org.springframework.roo.classpath.operations.DateTime;
 import org.springframework.roo.classpath.operations.EnumType;
 import org.springframework.roo.classpath.operations.Fetch;
@@ -55,9 +54,10 @@ import java.util.logging.Logger;
 
 /**
  * Additional shell commands for the purpose of creating fields.
- * 
+ *
  * @author Ben Alex
  * @author Alan Stewart
+ * @author Sergio Clares
  * @since 1.0
  */
 @Component
@@ -66,7 +66,7 @@ public class FieldCommands implements CommandMarker {
 
   protected final static Logger LOGGER = HandlerUtils.getLogger(FieldCommands.class);
 
-  //------------ OSGi component attributes ----------------
+  //------------ OSGi component attributes ----------------//
   private BundleContext context;
 
   @Reference
@@ -85,15 +85,11 @@ public class FieldCommands implements CommandMarker {
   private ProjectSettingsService projectSettings;
   @Reference
   private LastUsed lastUsed;
+
   private Converter<JavaType> javaTypeConverter;
 
   // FieldCreatorProvider implementations
   private List<FieldCreatorProvider> fieldCreatorProviders = new ArrayList<FieldCreatorProvider>();
-
-  // Project Settings 
-  private static final String SPRING_ROO_JPA_REQUIRE_SCHEMA_OBJECT_NAME =
-      "spring.roo.jpa.require.schema-object-name";
-  public static final String ROO_DEFAULT_JOIN_TABLE_NAME = "_ROO_JOIN_TABLE_";
 
   private final Set<String> legalNumericPrimitives = new HashSet<String>();
 
@@ -172,31 +168,90 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
+  @CliOptionVisibilityIndicator(command = "field boolean", params = {"assertFalse"},
+      help = "Option `--assertFalse` is not available if option `--assertTrue` "
+          + "has already been specified.")
+  public boolean isAssertFalseVisibleForFieldBoolean(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isAssertFalseVisibleForFieldBoolean(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field boolean", params = {"assertTrue"},
+      help = "Option `--assertTrue` is not available if option `--assertFalse` "
+          + "has already been specified.")
+  public boolean isAssertTrueVisibleForFieldBoolean(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isAssertTrueVisibleForFieldBoolean(shellContext);
+    }
+    return false;
+  }
+
   @CliCommand(value = "field boolean",
-      help = "Adds a private boolean field to an existing Java source file")
+      help = "Adds a private boolean field to an existing Java source file.")
   public void addFieldBoolean(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add") final JavaSymbolName fieldName,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module "
+              + "project, simply specify the name of the class in which the field will be included."
+              + " If you consider it necessary, you can also specify the package. "
+              + "Ex.: `--class ~.domain.MyClass` (where `~` is the base package). When working with"
+              + " multiple modules, you should specify the name of the class and the module where "
+              + "it is. Ex.: `--class model:~.domain.MyClass`. If the module is not specified, it "
+              + "is assumed that the class is in the module which has the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo shell.") final JavaType typeName,
+      @CliOption(key = "column", mandatory = true,
+          help = "The JPA @Column name. This option is only available for JPA entities and "
+              + "embeddable classes. "
+              + "This option is mandatory if `spring.roo.jpa.require.schema-object-name` "
+              + "configuration setting exists and it's `true`.") final String column,
+      @CliOption(
+          key = "transient",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Indicates to mark the field as transient, adding JPA `javax.persistence.Transient` "
+              + "annotation. This marks the field as not persistent. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean transientModifier,
       @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` "
+              + "annotation to the field. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
       @CliOption(key = "assertFalse", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must assert false") final boolean assertFalse,
+          specifiedDefaultValue = "true",
+          help = "Whether the value of this field must be false. Adds "
+              + "`javax.validation.constraints.AssertFalse` annotation to the field. "
+              + "This option is not available if `--asssertTrue` has already " + "been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean assertFalse,
       @CliOption(key = "assertTrue", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must assert true") final boolean assertTrue,
-      @CliOption(key = "column", mandatory = true, help = "The JPA @Column name") final String column,
-      @CliOption(key = "value", mandatory = false,
-          help = "Inserts an optional Spring @Value annotation with the given content") final String value,
+          specifiedDefaultValue = "true",
+          help = "Whether the value of this field must be true. Adds "
+              + "`javax.validation.constraints.AssertTrue` annotation to the field. "
+              + "This option is not available if `--asssertFalse` has already "
+              + "been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean assertTrue,
+      @CliOption(
+          key = "value",
+          mandatory = false,
+          help = "Inserts an optional Spring `org.springframework.beans.factory.annotation.Value` annotation with the given content, typically used for expression-driven dependency injection.") final String value,
       @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
       @CliOption(key = "primitive", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to use a primitive type") final boolean primitive,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
+          specifiedDefaultValue = "true", help = "Indicates to use the primitive type. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean primitive,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
+          help = "Indicates whether reserved words are ignored by Roo. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       ShellContext shellContext) {
 
     final ClassOrInterfaceTypeDetails javaTypeDetails =
@@ -206,8 +261,8 @@ public class FieldCommands implements CommandMarker {
     checkFieldExists(fieldName, shellContext, javaTypeDetails);
 
     getFieldCreatorProvider(typeName).createBooleanField(javaTypeDetails, primitive, fieldName,
-        notNull, nullRequired, assertFalse, assertTrue, column, comment, value,
-        permitReservedWords, transientModifier);
+        notNull, assertFalse, assertTrue, column, comment, value, permitReservedWords,
+        transientModifier);
   }
 
   @CliOptionMandatoryIndicator(command = "field date", params = {"column"})
@@ -267,48 +322,188 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
+  @CliOptionVisibilityIndicator(command = "field date", params = {"future"},
+      help = "Option '--future' is not available when option '--past' has already "
+          + "been specified.")
+  public boolean isFutureVisibleForFieldDate(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isFutureVisibleForFieldDate(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field date", params = {"past"},
+      help = "Option '--past' is not available when option '--future' has already "
+          + "been specified.")
+  public boolean isPastVisibleForFieldDate(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isPastVisibleForFieldDate(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field date", params = {"dateFormat", "timeFormat"},
+      help = "Options `--dateFormat` and `--timeFormat` are not available when option "
+          + "`--dateTimeFormatPattern` has already been specified.")
+  public boolean areDateAndTimeFormatVisibleForFieldDate(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).areDateAndTimeFormatVisibleForFieldDate(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field date", params = {"dateTimeFormatPattern"},
+      help = "Option `--dateTimeFormatPattern` is not available when options "
+          + "`--dateFormat` or `--timeFormat` have already been specified.")
+  public boolean isDateTimeFormatPatternVisibleForFieldDate(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isDateTimeFormatPatternVisibleForFieldDate(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field date", params = {"notNull"},
+      help = "Option `--notNull` is not available when option `--nullRequired` "
+          + "has already been specified.")
+  public boolean isNotNullVisibleForFieldDate(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNotNullVisibleForFieldDate(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field date", params = {"nullRequired"},
+      help = "Option `--nullRequired` is not available when option `--notNull` "
+          + "has already been specified.")
+  public boolean isNullRequiredVisibleForFieldDate(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNullRequiredVisibleForFieldDate(shellContext);
+    }
+    return false;
+  }
+
   @CliCommand(value = "field date",
-      help = "Adds a private date field to an existing Java source file")
+      help = "Adds a private date field to an existing Java source file.")
   public void addFieldDateJpa(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add") final JavaSymbolName fieldName,
-      @CliOption(key = "type", mandatory = true, optionContext = "java-date",
-          help = "The Java type of the entity") final JavaType fieldType,
-      @CliOption(key = "persistenceType", mandatory = false,
-          help = "The type of persistent storage to be used") final DateFieldPersistenceType persistenceType,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
-      @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
-      @CliOption(key = "future", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be in the future") final boolean future,
-      @CliOption(key = "past", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be in the past") final boolean past,
-      @CliOption(key = "column", mandatory = true, help = "The JPA @Column name") final String column,
-      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
-      @CliOption(key = "value", mandatory = false,
-          help = "Inserts an optional Spring @Value annotation with the given content") final String value,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
+      @CliOption(
+          key = "type",
+          mandatory = true,
+          optionContext = "java-date",
+          help = "The Java date type of the field. Its value can be `java.util.Date` or `java.util.Calendar`.") final JavaType fieldType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module project, "
+              + "simply specify the name of the class in which the field will be included. If you "
+              + "consider it necessary, you can also specify the package. Ex.: `--class ~.domain.MyClass` "
+              + "(where `~` is the base package). When working with multiple modules, you should specify "
+              + "the name of the class and the module where it is. Ex.: `--class model:~.domain.MyClass`. "
+              + "If the module is not specified, it is assumed that the class is in the module which has "
+              + "the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo shell.") final JavaType typeName,
+      @CliOption(
+          key = "persistenceType",
+          mandatory = false,
+          help = "The type of persistent storage to be used. It adds a `javax.persistence.TemporalType` "
+              + "to a `javax.persistence.Temporal` annotation into the field. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option not present: `TemporalType.TIMESTAMP`") final DateFieldPersistenceType persistenceType,
+      @CliOption(
+          key = "column",
+          mandatory = true,
+          help = "The JPA @Column name. "
+              + "This option is mandatory if `spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`. "
+              + "This option is only visible for JPA entities and embeddable classes.") final String column,
+      @CliOption(
+          key = "transient",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Indicates to mark the field as transient, adding JPA `javax.persistence.Transient` "
+              + "annotation. This marks the field as not persistent. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present:`true`. Default if option not present: `false`.") final boolean transientModifier,
+      @CliOption(
+          key = "notNull",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` annotation to the field. "
+              + "This option is not available if `--nullRequired` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
+      @CliOption(
+          key = "nullRequired",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be null. Adds `javax.validation.constraints.Null` annotation to the field. "
+              + "This option is not available if `--notNull` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean nullRequired,
+      @CliOption(
+          key = "future",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be in the future. Adds `field.javax.validation.constraints.Future` "
+              + "annotation to the field. "
+              + "This option is not available if `--past` option has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean future,
+      @CliOption(
+          key = "past",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be in the past. Adds `field.javax.validation.constraints.Past` "
+              + "annotation to the field. "
+              + "This option is not available if `--future` option has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean past,
+      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs.") final String comment,
+      @CliOption(
+          key = "value",
+          mandatory = false,
+          help = "Inserts an optional Spring `org.springframework.beans.factory.annotation.Value` "
+              + "annotation with the given content, typically used for expression-driven dependency "
+              + "injection.") final String value,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
-      @CliOption(
-          key = "dateFormat",
-          mandatory = false,
-          unspecifiedDefaultValue = "MEDIUM",
+          help = "Indicates whether reserved words are ignored by Roo. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
+      @CliOption(key = "dateFormat", mandatory = false, unspecifiedDefaultValue = "MEDIUM",
           specifiedDefaultValue = "MEDIUM",
-          help = "Indicates the style of the date format (ignored if dateTimeFormatPattern is specified)") final DateTime dateFormat,
-      @CliOption(
-          key = "timeFormat",
-          mandatory = false,
-          unspecifiedDefaultValue = "NONE",
+          help = "Indicates the style of the date format, adding `style` attribute to "
+              + "`org.springframework.format.annotation.DateTimeFormat` annotation "
+              + "into the field, with date style (first character of the code). "
+              + "Possible values are: `MEDIUM` (style='M-'), `NONE` (style='--') and "
+              + "`SHORT` (style='S-'). "
+              + "This option is not available if `--dateTimeFormatPattern` has already "
+              + "been specified." + "Default: `MEDIUM`.") final DateTime dateFormat,
+      @CliOption(key = "timeFormat", mandatory = false, unspecifiedDefaultValue = "NONE",
           specifiedDefaultValue = "NONE",
-          help = "Indicates the style of the time format (ignored if dateTimeFormatPattern is specified)") final DateTime timeFormat,
-      @CliOption(key = "dateTimeFormatPattern", mandatory = false,
-          help = "Indicates a DateTime format pattern such as yyyy-MM-dd hh:mm:ss a") final String pattern,
-      ShellContext shellContext) {
+          help = "Indicates the style of the time format, adding `style` attribute to "
+              + "`org.springframework.format.annotation.DateTimeFormat` annotation "
+              + "into the field, with time style (second character of the code). "
+              + "Possible values are: `MEDIUM` (style='-M'), `NONE` (style='--') and "
+              + "`SHORT` (style='-S'). "
+              + "This option is not available if `--dateTimeFormatPattern` has already "
+              + "been specified. " + "Default: `NONE`.") final DateTime timeFormat,
+      @CliOption(
+          key = "dateTimeFormatPattern",
+          mandatory = false,
+          help = "Indicates a 'custom' DateTime format pattern such as yyyy-MM-dd hh:mm:ss, adding "
+              + "`pattern` attribute to `org.springframework.format.annotation.DateTimeFormat` "
+              + "annotation into the field, with the provided value. "
+              + "This option is not available if `--timeFormat` or `--dateFormat` have already "
+              + "been specified.") final String pattern, ShellContext shellContext) {
 
     final ClassOrInterfaceTypeDetails javaTypeDetails =
         typeLocationService.getTypeDetails(typeName);
@@ -350,17 +545,33 @@ public class FieldCommands implements CommandMarker {
   }
 
   @CliCommand(value = "field embedded",
-      help = "Adds a private @Embedded field to an existing Java source file ")
+      help = "Adds a private `@Embedded` field to an existing Java source file. "
+          + "This command is only available for entities annotated with `@RooJpaEntity` (Roo JPA "
+          + "entities). Therefore, you should focus the desired entity in the Roo Shell to make "
+          + "this command available.")
   public void addFieldEmbeddedJpa(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add") final JavaSymbolName fieldName,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
       @CliOption(key = "type", mandatory = true, optionContext = PROJECT,
-          help = "The Java type of the @Embeddable class") final JavaType fieldType,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
+          help = "The Java type of an embeddable class, annotated with `@Embeddable`. "
+              + "Possible values are: any class in the project annotated with `@Embeddable`.") final JavaType fieldType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
           optionContext = UPDATE_PROJECT,
-          help = "The name of the @Entity class to receive this field") final JavaType typeName,
+          help = "The name of the class to generate the field. When working on a mono module project, "
+              + "simply specify the name of the class in which the field will be included. If you "
+              + "consider it necessary, you can also specify the package. Ex.: `--class ~.domain.MyClass`"
+              + " (where `~` is the base package). When working with multiple modules, you should "
+              + "specify the name of the class and the module where it is. "
+              + "Ex.: `--class model:~.domain.MyClass`. If the module is not specified, it is assumed "
+              + "that the class is in the module which has the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo Shell.") final JavaType typeName,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
+          help = "Indicates whether reserved words are ignored by Roo."
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       ShellContext shellContext) {
 
     // Check if the field type is a JPA @Embeddable class
@@ -434,30 +645,108 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
-  @CliCommand(value = "field enum",
-      help = "Adds a private enum field to an existing Java source file")
+  @CliOptionVisibilityIndicator(command = "field enum", params = {"notNull"},
+      help = "Option `--notNull` is not available when option `--nullRequired` "
+          + "has already been specified.")
+  public boolean isNotNullVisibleForFieldEnum(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNotNullVisibleForFieldEnum(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field enum", params = {"nullRequired"},
+      help = "Option `--nullRequired` is not available when option `--notNull` "
+          + "has already been specified.")
+  public boolean isNullRequiredVisibleForFieldEnum(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNullRequiredVisibleForFieldEnum(shellContext);
+    }
+    return false;
+  }
+
+  @CliCommand(
+      value = "field enum",
+      help = "Adds a private enum field to an existing Java source file. The field type must be a Java enum type.")
   public void addFieldEnum(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add") final JavaSymbolName fieldName,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
       @CliOption(key = "type", mandatory = true, optionContext = ENUMERATION,
-          help = "The enum type of this field") final JavaType fieldType,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
-      @CliOption(key = "column", mandatory = true, help = "The JPA @Column name") final String column,
-      @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
-      @CliOption(key = "enumType", mandatory = false, help = "The fetch semantics at a JPA level") final EnumType enumType,
+          help = "The Java type of the field. It must be a Java enum type. "
+              + "Possible values are: any enumerated class in the user's project.") final JavaType fieldType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module project, "
+              + "simply specify the name of the class in which the field will be included. If you "
+              + "consider it necessary, you can also specify the package. Ex.: `--class ~.domain.MyClass`"
+              + " (where `~` is the base package). When working with multiple modules, you should specify"
+              + " the name of the class and the module where it is. Ex.: `--class model:~.domain.MyClass`."
+              + " If the module is not specified, it is assumed that the class is in the module which has"
+              + " the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo Shell.") final JavaType typeName,
+      @CliOption(
+          key = "column",
+          mandatory = true,
+          help = "The JPA `@Column` name. "
+              + "This option is mandatory if `spring.roo.jpa.require.schema-object-name` configuration "
+              + "setting exists and it's `true`. "
+              + "This option is only available for JPA entities and embeddable classes.") final String column,
+      @CliOption(
+          key = "transient",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Indicates to mark the field as transient, adding JPA `javax.persistence.Transient` "
+              + "annotation. This marks the field as not persistent. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present:`true`; default if option not present: `false`.") final boolean transientModifier,
+      @CliOption(
+          key = "enumType",
+          mandatory = false,
+          help = "Defines how the enumerated field should be persisted at a JPA level. Adds the "
+              + "`javax.persistence.Enumerated` annotation to the field, with `javax.persistence.EnumType`"
+              + " attribute. "
+              + "Possible values are: `ORDINAL` (persists as an integer) and `STRING` "
+              + "(persists as a String). "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option not present: `ORDINAL` (no `@Enumerated` - default by JPA).") final EnumType enumType,
+      @CliOption(
+          key = "notNull",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` annotation to the field. "
+              + "This option is not available if `--nullRequired` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
+      @CliOption(
+          key = "nullRequired",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be null. Adds `javax.validation.constraints.Null` annotation to the field. "
+              + "This option is not available if `--notNull` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean nullRequired,
       @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
+          help = "Indicates whether reserved words are ignored by Roo."
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       ShellContext shellContext) {
 
+    final ClassOrInterfaceTypeDetails enumTypeCid = typeLocationService.getTypeDetails(fieldType);
+    Validate.notNull(enumTypeCid,
+        "The enum type specified, '%s', doesn't exist. Please, specify an existent enum type.",
+        fieldType.getSimpleTypeName());
+
     final ClassOrInterfaceTypeDetails cid = typeLocationService.getTypeDetails(typeName);
-    Validate.notNull(cid, "The type specified, '%s', doesn't exist", typeName);
+    Validate.notNull(cid,
+        "The class specified, '%s', doesn't exist. Please, specify an existent class.",
+        typeName.getSimpleTypeName());
 
     checkFieldExists(fieldName, shellContext, cid);
 
@@ -522,42 +811,133 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
-  @CliCommand(value = "field number",
-      help = "Adds a private numeric field to an existing Java source file")
+  @CliOptionVisibilityIndicator(command = "field number", params = {"notNull"},
+      help = "Option `--notNull` is not available when option `--nullRequired` "
+          + "has already been specified.")
+  public boolean isNotNullVisibleForFieldNumber(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNotNullVisibleForFieldNumber(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field number", params = {"nullRequired"},
+      help = "Option `--nullRequired` is not available if numeric type is primitive "
+          + "or `--notNull` option has been specified.")
+  public boolean isNullRequiredVisibleForFieldNumber(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNullRequiredVisibleForFieldNumber(shellContext);
+    }
+    return false;
+  }
+
+  @CliCommand(
+      value = "field number",
+      help = "Adds a private numeric field to an existing Java source file. User can choose the field type between a wide range of numeric types.")
   public void addFieldNumber(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add") final JavaSymbolName fieldName,
-      @CliOption(key = "type", mandatory = true, optionContext = "java-number",
-          help = "The Java type of the entity") JavaType fieldType,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
-      @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
-      @CliOption(key = "decimalMin", mandatory = false,
-          help = "The BigDecimal string-based representation of the minimum value") final String decimalMin,
-      @CliOption(key = "decimalMax", mandatory = false,
-          help = "The BigDecimal string based representation of the maximum value") final String decimalMax,
-      @CliOption(key = "digitsInteger", mandatory = false,
-          help = "Maximum number of integral digits accepted for this number") final Integer digitsInteger,
-      @CliOption(key = "digitsFraction", mandatory = false,
-          help = "Maximum number of fractional digits accepted for this number") final Integer digitsFraction,
-      @CliOption(key = "min", mandatory = false, help = "The minimum value") final Long min,
-      @CliOption(key = "max", mandatory = false, help = "The maximum value") final Long max,
-      @CliOption(key = "column", mandatory = true, help = "The JPA @Column name") final String column,
-      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
-      @CliOption(key = "value", mandatory = false,
-          help = "Inserts an optional Spring @Value annotation with the given content") final String value,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
-      @CliOption(key = "primitive", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to use a primitive type if possible") final boolean primitive,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
+      @CliOption(
+          key = "type",
+          mandatory = true,
+          optionContext = "java-number",
+          help = "The Java type of the field. Only numeric types allowed. "
+              + "Possible values are: `java.math.BigDecimal`, `java.math.BigInteger`, `byte`, "
+              + "`java.lang.Byte`, `double`, `java.lang.Double`, `float`, `java.lang.Float`, `int`, "
+              + "`java.lang.Integer`, `long`, `java.lang.Long`, `java.lang.Number`, `short` and "
+              + "`java.lang.Short`.") JavaType fieldType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module "
+              + "project, simply specify the name of the class in which the field will be included. "
+              + "If you consider it necessary, you can also specify the package. "
+              + "Ex.: `--class ~.domain.MyClass` (where `~` is the base package). When working with "
+              + "multiple modules, you should specify the name of the class and the module where it "
+              + "is. Ex.: `--class model:~.domain.MyClass`. If the module is not specified, it is "
+              + "assumed that the class is in the module which has the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo Shell.") final JavaType typeName,
+      @CliOption(key = "column", mandatory = true, help = "The JPA `@Column` name."
+          + "This option is mandatory if `spring.roo.jpa.require.schema-object-name` "
+          + "configuration setting exists and it's `true`. "
+          + "This option is only available for JPA entities and embeddable classes.") final String column,
       @CliOption(key = "unique", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether to mark the field with a unique constraint") final boolean unique,
+          help = "Indicates whether to mark the field with a unique constraint. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean unique,
+      @CliOption(
+          key = "transient",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Indicates to mark the field as transient, adding JPA `javax.persistence.Transient` "
+              + "annotation. This marks the field as not persistent. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present:`true`. Default if option not present: `false`.") final boolean transientModifier,
+      @CliOption(
+          key = "notNull",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` annotation to the field. "
+              + "This option is not available if `--nullRequired` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
+      @CliOption(
+          key = "nullRequired",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be null. Adds `javax.validation.constraints.Null` annotation to the field. "
+              + "This option is not available if `--notNull` or `--primitive` option have already been specified "
+              + "with value `true` or without value. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean nullRequired,
+      @CliOption(
+          key = "decimalMin",
+          mandatory = false,
+          help = "The BigDecimal string-based representation of the minimum value. It adds to the field "
+              + "`javax.validation.constraints.DecimalMin` annotation with provided value.") final String decimalMin,
+      @CliOption(
+          key = "decimalMax",
+          mandatory = false,
+          help = "The BigDecimal string based representation of the maximum value. It adds to the field "
+              + "`javax.validation.constraints.DecimalMax` annotation with provided value.") final String decimalMax,
+      @CliOption(
+          key = "digitsInteger",
+          mandatory = false,
+          help = "Maximum number of integral digits accepted for this number. It creates or updates field "
+              + "`javax.validation.constraints.Digits` annotation, adding `integer` attribute with the "
+              + "provided value.") final Integer digitsInteger,
+      @CliOption(
+          key = "digitsFraction",
+          mandatory = false,
+          help = "Maximum number of fractional digits accepted for this number. It creates or updates field "
+              + "`javax.validation.constraints.Digits` annotation, adding `fraction` attribute with the "
+              + "provided value.") final Integer digitsFraction,
+      @CliOption(key = "min", mandatory = false,
+          help = "The minimum value of the numeric field. It adds "
+              + "`javax.validation.constraints.Min` with provided value to the field.") final Long min,
+      @CliOption(key = "max", mandatory = false,
+          help = "The maximum value of the numeric field. It adds "
+              + "`javax.validation.constraints.Max` with provided value to the field.") final Long max,
+      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs.") final String comment,
+      @CliOption(
+          key = "value",
+          mandatory = false,
+          help = "Inserts an optional Spring `org.springframework.beans.factory.annotation.Value` "
+              + "annotation with the given content, typically used for expression-driven dependency "
+              + "injection. ") final String value,
+      @CliOption(key = "primitive", mandatory = false, unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true", help = "Indicates to use a primitive type if possible. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean primitive,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
+          help = "Indicates whether reserved words are ignored by Roo. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       ShellContext shellContext) {
 
     final ClassOrInterfaceTypeDetails javaTypeDetails =
@@ -624,32 +1004,12 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
-  @CliOptionVisibilityIndicator(command = "field reference", params = {"cardinality"},
-      help = "Option 'cardinality' is not available for this type of class")
-  public boolean isCardinalityVisibleForFieldReference(ShellContext shellContext) {
-    JavaType type = getTypeFromCommand(shellContext);
-    if (type != null) {
-      return getFieldCreatorProvider(type).isCardinalityVisibleForFieldReference(shellContext);
-    }
-    return false;
-  }
-
   @CliOptionVisibilityIndicator(command = "field reference", params = {"fetch"},
       help = "Option 'fetch' is not available for this type of class")
   public boolean isFetchVisibleForFieldReference(ShellContext shellContext) {
     JavaType type = getTypeFromCommand(shellContext);
     if (type != null) {
       return getFieldCreatorProvider(type).isFetchVisibleForFieldReference(shellContext);
-    }
-    return false;
-  }
-
-  @CliOptionVisibilityIndicator(command = "field reference", params = {"transient"},
-      help = "Option 'transient' is not available for this type of class")
-  public boolean isTransientVisibleForFieldReference(ShellContext shellContext) {
-    JavaType type = getTypeFromCommand(shellContext);
-    if (type != null) {
-      return getFieldCreatorProvider(type).isTransientVisibleForFieldReference(shellContext);
     }
     return false;
   }
@@ -682,50 +1042,167 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
+  @CliOptionVisibilityIndicator(command = "field reference", params = {"notNull"},
+      help = "Option `--notNull` is not available when option `--nullRequired` "
+          + "has already been specified.")
+  public boolean isNotNullVisibleForFieldReference(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNotNullVisibleForFieldReference(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field reference", params = {"nullRequired"},
+      help = "Option `--nullRequired` is not available if numeric type is primitive "
+          + "or `--notNull` option has been specified.")
+  public boolean isNullRequiredVisibleForFieldReference(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNullRequiredVisibleForFieldReference(shellContext);
+    }
+    return false;
+  }
+
   @CliCommand(
       value = "field reference",
-      help = "Adds a private reference field to an existing Java source file (eg the 'many' side of a many-to-one)")
+      help = "Adds a private reference field, representing (always) a bidirectional 'one-to-one' "
+          + "relation, to an existing Java source file. Therefore, this command will add as well a "
+          + "'one-to-one' field on the other side of the relation. "
+          + "This command is only available for entities annotated with `@RooJpaEntity`, so you "
+          + "should focus the desired entity in the Roo Shell to make this command available.")
   public void addFieldReferenceJpa(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add") final JavaSymbolName fieldName,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
       @CliOption(key = "type", mandatory = true, optionContext = PROJECT,
-          help = "The Java type of the entity to reference") final JavaType fieldType,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
-      @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
-      @CliOption(key = "joinColumnName", mandatory = true, help = "The JPA @JoinColumn name") final String joinColumnName,
+          help = "The Java type of the entity to reference.") final JavaType fieldType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module "
+              + "project, simply specify the name of the class in which the field will be "
+              + "included. If you consider it necessary, you can also specify the package. "
+              + "Ex.: `--class ~.domain.MyClass` (where `~` is the base package). When working "
+              + "with multiple modules, you should specify the name of the class and the module "
+              + "where it is. Ex.: `--class model:~.domain.MyClass`. If the module is not "
+              + "specified, it is assumed that the class is in the module which has the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo Shell.") final JavaType typeName,
+      @CliOption(key = "joinColumnName", mandatory = true,
+          help = "The JPA `@JoinColumn` `name` attribute. "
+              + "This option is mandatory if `spring.roo.jpa.require.schema-object-name` "
+              + "configuration setting exists and it's `true`. "
+              + "This option is only available for JPA entities.") final String joinColumnName,
       @CliOption(key = "referencedColumnName", mandatory = false,
-          help = "The JPA @JoinColumn referencedColumnName") final String referencedColumnName,
-      @CliOption(key = "cardinality", mandatory = false, unspecifiedDefaultValue = "MANY_TO_ONE",
-          specifiedDefaultValue = "MANY_TO_ONE",
-          help = "The relationship cardinality at a JPA level") final Cardinality cardinality,
-      @CliOption(key = "fetch", mandatory = false, help = "The fetch semantics at a JPA level") final Fetch fetch,
-      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
+          help = "The JPA `@JoinColumn` `referencedColumnName` attribute."
+              + "This option is only available for JPA entities.") final String referencedColumnName,
+      @CliOption(
+          key = "fetch",
+          mandatory = false,
+          help = "The fetch semantics at a JPA level. It adds the provided value to `fetch` attribute "
+              + "of JPA `@OneToOne`. If this option is not provided, default fetch type will be `LAZY`. "
+              + "Possible values are `LAZY`and `EAGER`. "
+              + "This option is only available for JPA entities.") final Fetch fetch,
+      @CliOption(
+          key = "mappedBy",
+          mandatory = false,
+          help = "The field name on the referenced type which owns the relationship, which will be also "
+              + "created due to bidirectional relation. If not specified, it will take the lower camel "
+              + "case of the current entity (focused entity or specified in `--class` option). If the "
+              + "field already exists in the related entity, command won't be executed. "
+              + "This option is only available for JPA entities. "
+              + "Default if not present: current entity name in lower camel case.") final JavaSymbolName mappedBy,
+      @CliOption(key = "aggregation", mandatory = false, specifiedDefaultValue = "true",
+          unspecifiedDefaultValue = "true",
+          help = "Whether the relationship type is 'aggregation' or 'composition'. An aggregation "
+              + "relation means that children entities aren't dependent from parent entity "
+              + "(current entity) and they can exist without parent entity. In the other hand, in "
+              + "a composition relation the parent entity of the relationship also owns the life "
+              + "cycle of related entities. The parent entity is responsible for the creation and "
+              + "destruction of children entities, these being linked to a single parent entity. "
+              + "A child entity cannot be in two different composition relationships. "
+              + "Default: `true`.") final boolean aggregation,
+      @CliOption(key = "orphanRemoval", mandatory = false, specifiedDefaultValue = "true",
+          help = "Indicates whether to apply the remove operation to entities that have been "
+              + "removed from the relationship and to cascade the remove operation to those "
+              + "entities. If this relation represents a 'composition' relation and this option "
+              + "is not present, `--orphanRemoval` value will be `true`. "
+              + "Default if option present: `true`.") Boolean orphanRemoval,
+      @CliOption(
+          key = "notNull",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` annotation to the field. "
+              + "This option is not available if `--nullRequired` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
+      @CliOption(
+          key = "nullRequired",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be null. Adds `javax.validation.constraints.Null` annotation to the field. "
+              + "This option is not available if `--notNull` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean nullRequired,
+      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs.") final String comment,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
+          help = "Indicates whether reserved words are ignored by Roo. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       @CliOption(
-          key = "cascadeType",
+          key = "entityFormatExpression",
           mandatory = false,
-          specifiedDefaultValue = "ALL",
-          help = "CascadeType. Possible values are ALL, DETACH, MERGE, PERSIST, REFRESH and REMOVE.") final Cascade cascadeType,
+          help = "The SpEL expression used to format the related entity when showing it in presentation layer e.g. "
+              + "`{#fieldA} {#fieldB}`. It adds the `value` attribute to `io.springlets.format.EntityFormat` "
+              + "annotation.") String formatExpression,
+      @CliOption(
+          key = "entityFormatMessage",
+          mandatory = false,
+          help = "The message key used to obtain a localized SpEL expression to format the related entity when "
+              + "showing it in presentation layer. It adds the `message` attribute to "
+              + "`io.springlets.format.EntityFormat` annotation and creates a message in all message bundles "
+              + "with the provided key. Message value should be modified by developer.") String formatMessage,
+      //      @CliOption(
+      //          key = "cascadeType",
+      //          mandatory = false,
+      //          help = "CascadeType. Possible values are ALL, DETACH, MERGE, PERSIST, REFRESH and REMOVE.") final Cascade cascadeType,
       ShellContext shellContext) {
 
-    final ClassOrInterfaceTypeDetails cid = typeLocationService.getTypeDetails(fieldType);
-    Validate
-        .notNull(cid,
-            "The specified target '--type' does not exist or can not be found. Please create this type first.");
+    // TODO support multiple cascade type
+    getFieldCreatorProvider(typeName)
+        .createReferenceField(typeName, fieldType, fieldName, aggregation, mappedBy, null, notNull,
+            joinColumnName, referencedColumnName, fetch, comment, permitReservedWords,
+            orphanRemoval, shellContext.isForce(), formatExpression, formatMessage);
+  }
 
-    final ClassOrInterfaceTypeDetails selfCid = typeLocationService.getTypeDetails(typeName);
-    checkFieldExists(fieldName, shellContext, selfCid);
+  @CliOptionMandatoryIndicator(command = "field set", params = {"joinColumnName"})
+  public boolean isColumnMandatoryForFieldSet(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isJoinColumnNameMandatoryForFieldSet(shellContext);
+    }
+    return false;
+  }
 
-    getFieldCreatorProvider(typeName).createReferenceField(cid, cardinality, typeName, fieldType,
-        fieldName, cascadeType, notNull, nullRequired, joinColumnName, referencedColumnName, fetch,
-        comment, permitReservedWords, transientModifier);
+  @CliOptionVisibilityIndicator(command = "field set", params = {"joinColumnName"},
+      help = "Option 'joinColumnName' is not available for this type of class")
+  public boolean isJoinColumnNameVisibleForFieldSet(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isJoinColumnNameVisibleForFieldSet(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field set", params = {"referencedColumnName"},
+      help = "Option 'referencedColumnName' is not available for this type of class")
+  public boolean isReferencedColumnNameVisibleForFieldSet(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isReferencedColumnNameVisibleForFieldSet(shellContext);
+    }
+    return false;
   }
 
   @CliOptionMandatoryIndicator(command = "field set", params = {"joinColumns", "referencedColumns",
@@ -789,16 +1266,6 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
-  @CliOptionVisibilityIndicator(command = "field set", params = {"transient"},
-      help = "Option 'transient' is not available for this type of class")
-  public boolean isTransientVisibleForFieldSet(ShellContext shellContext) {
-    JavaType type = getTypeFromCommand(shellContext);
-    if (type != null) {
-      return getFieldCreatorProvider(type).isTransientVisibleForFieldSet(shellContext);
-    }
-    return false;
-  }
-
   @CliOptionVisibilityIndicator(command = "field set", params = {"joinTable"},
       help = "Option 'joinTable' is not available for this type of class")
   public boolean isJoinTableVisibleForFieldSet(ShellContext shellContext) {
@@ -837,74 +1304,221 @@ public class FieldCommands implements CommandMarker {
     return new ArrayList<String>();
   }
 
+  @CliOptionVisibilityIndicator(command = "field set", params = {"aggregation", "comment", "fetch",
+      "force", "mappedBy", "notNull", "nullRequired", "orphanRemoval", "permitReservedWords",
+      "profile", "sizeMax", "sizeMin"}, help = "--joinTable or --joinColumnName must be defined")
+  public boolean areOptionalParametersVisibleForFieldSet(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).areOptionalParametersVisibleForFieldSet(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field set", params = {"notNull"},
+      help = "Option `--notNull` is not available when option `--nullRequired` "
+          + "has already been specified.")
+  public boolean isNotNullVisibleForFieldSet(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNotNullVisibleForFieldSet(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field set", params = {"nullRequired"},
+      help = "Option `--nullRequired` is not available if numeric type is primitive "
+          + "or `--notNull` option has been specified.")
+  public boolean isNullRequiredVisibleForFieldSet(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNullRequiredVisibleForFieldSet(shellContext);
+    }
+    return false;
+  }
+
   @CliCommand(
       value = "field set",
-      help = "Adds a private Set field to an existing Java source file (eg the 'one' side of a many-to-one)")
+      help = "Adds a private `Set` field to an existing Java source file, representing (always) a "
+          + "bidirectional relation with other entity. Therefore, this command will also add a field "
+          + "on the other side of the relation (the owner side, with `mappedBy` attribute), which will"
+          + " be a `Set` field for 'many-to-many' relations, or a *not* `Collection` field for a "
+          + "'one-to-many' relation. All added fields will have the needed JPA annotations to properly "
+          + "manage bidirectional relations. "
+          + "This command is only available for entities annotated with `@RooJpaEntity` (Roo JPA "
+          + "entities). Therefore, you should focus the desired entity in the Roo Shell to make "
+          + "this command available.")
   public void addFieldSetJpa(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add") final JavaSymbolName fieldName,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
       @CliOption(key = "type", mandatory = true,
-          help = "The entity which will be contained within the Set") final JavaType fieldType,
-      @CliOption(key = "mappedBy", mandatory = false,
-          help = "The field name on the referenced type which owns the relationship") final JavaSymbolName mappedBy,
-      @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
-      @CliOption(key = "sizeMin", mandatory = false,
-          help = "The minimum number of elements in the collection") final Integer sizeMin,
-      @CliOption(key = "sizeMax", mandatory = false,
-          help = "The maximum number of elements in the collection") final Integer sizeMax,
+          help = "The entity related to this one, which will be contained within the `List`."
+              + "Possible values are: any of the entities in the project.") final JavaType fieldType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module "
+              + "project, simply specify the name of the class in which the field will be included."
+              + " If you consider it necessary, you can also specify the package. "
+              + "Ex.: `--class ~.domain.MyClass` (where `~` is the base package). When working with"
+              + " multiple modules, you should specify the name of the class and the module where "
+              + "it is. Ex.: `--class model:~.domain.MyClass`. If the module is not specified, it "
+              + "is assumed that the class is in the module which has the focus."
+              + "This option is mandatory for this command when the focus is not set to one class."
+              + "Default if option not present: the class focused by Roo shell.") final JavaType typeName,
+      @CliOption(
+          key = "joinColumnName",
+          mandatory = true,
+          help = "The JPA `@JoinColumn` `name` attribute. When this option is set, cardinality will be set as `ONE_TO_MANY`."
+              + "This option is mandatory for 'ONE_TO_MANY' relationships without join table, "
+              + "if `spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`.") final String joinColumnName,
+      @CliOption(
+          key = "referencedColumnName",
+          mandatory = false,
+          help = "The JPA `@JoinColumn` `referencedColumnName` attribute. This option is only available"
+              + " when `--joinColumnName` option is set.") final String referencedColumnName,
+      @CliOption(
+          key = "joinTable",
+          mandatory = true,
+          help = "Join table name. Most usually used in @ManyToMany relations."
+              + "This option is mandatory for this command if `--cardinality` is set to `MANY_TO_MANY` "
+              + "and `spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`.") final String joinTable,
+      @CliOption(
+          key = "joinColumns",
+          mandatory = true,
+          help = "Comma separated list of join table's foreign key columns which references the table "
+              + "of the related entity (the owner entity in bidirectional relations)."
+              + "This option is mandatory if `--joinTable` option has been specified and if "
+              + "`spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`."
+              + "This option is only available when `--joinTable` " + "option is set.") final String joinColumns,
+      @CliOption(
+          key = "referencedColumns",
+          mandatory = true,
+          help = "Comma separated list of foreign key referenced columns in the primary table of the "
+              + "related entity (the owner entity in bidirectional relations)."
+              + "This option is mandatory if `--joinTable` option has been specified and if "
+              + "`spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`."
+              + "This option is only available when `--joinTable` " + "option is set.") final String referencedColumns,
+      @CliOption(
+          key = "inverseJoinColumns",
+          mandatory = true,
+          help = "Comma separated list of join table's foreign key columns which references the table of "
+              + "the entity that does not own the relation (current entity)."
+              + "This option is mandatory if `--joinTable` option has been specified and if "
+              + "`spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`."
+              + "This option is only available when `--joinTable` " + "option is set.") final String inverseJoinColumns,
+      @CliOption(
+          key = "inverseReferencedColumns",
+          mandatory = true,
+          help = "Comma separated list of foreign key referenced columns in the primary table of the "
+              + "entity that does not own the relation (current entity)."
+              + "This option is mandatory if `--joinTable` option has been specified and if "
+              + "`spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`."
+              + "This option is only available when `--joinTable` " + "option is set.") final String inverseReferencedColumns,
+      @CliOption(
+          key = "mappedBy",
+          mandatory = false,
+          help = "The field name on the referenced type which owns the relationship, which will be also "
+              + "created due to bidirectional relation. If not specified, it will take the lower camel "
+              + "case of the current entity (focused entity or specified in `--class` option). If the "
+              + "field already exists in the related entity, command won't be executed."
+              + "This option is only available for JPA entities."
+              + "Default if not present: current entity name in lower camel case.") final JavaSymbolName mappedBy,
       @CliOption(key = "cardinality", mandatory = false, unspecifiedDefaultValue = "ONE_TO_MANY",
           specifiedDefaultValue = "ONE_TO_MANY",
-          help = "The relationship cardinality at a JPA level") Cardinality cardinality,
-      @CliOption(key = "fetch", mandatory = false, help = "The fetch semantics at a JPA level") final Fetch fetch,
+          help = "The relationship cardinality at a JPA level. "
+              + "This option is only available for JPA entities and embeddable classes."
+              + "Default: `ONE_TO_MANY`.") CardinalitySupported cardinality,
+      @CliOption(
+          key = "fetch",
+          mandatory = false,
+          help = "The fetch semantics at a JPA level. It adds the provided value to `fetch` attribute of "
+              + "JPA `@OneToMany`, `@ManyToMany` and `@ManyToOne`. "
+              + "Possible values are: `LAZY`and `EAGER`."
+              + "Default if option not present: `LAZY`.") final Fetch fetch,
+      @CliOption(
+          key = "aggregation",
+          mandatory = false,
+          specifiedDefaultValue = "true",
+          unspecifiedDefaultValue = "true",
+          help = "Whether the relationship type is 'aggregation' or 'composition'. An aggregation "
+              + "relation means that children entities aren't dependent from parent entity (current "
+              + "entity) and they can exist without parent entity. In the other hand, in a composition "
+              + "relation the parent entity of the relationship also owns the life cycle of related "
+              + "entities. The parent entity is responsible for the creation and destruction of children"
+              + " entities, these being linked to a single parent entity. A child entity cannot be in two"
+              + " different composition relationships." + "Default: `true`.") final boolean aggregation,
+      @CliOption(
+          key = "orphanRemoval",
+          mandatory = false,
+          specifiedDefaultValue = "true",
+          help = "Indicates whether to apply the remove operation to entities that have been removed from"
+              + " the relationship and to cascade the remove operation to those entities. If this "
+              + "relation represents a 'composition' relation and this option is not present, "
+              + "`--orphanRemoval` value will be `true`." + "Default if option present: `true`.") Boolean orphanRemoval,
+      @CliOption(
+          key = "sizeMin",
+          mandatory = false,
+          help = "The minimum number of elements in the collection. This option adds or updates "
+              + "`javax.validation.constraints.Size` with the provided value as `min` attribute value.") final Integer sizeMin,
+      @CliOption(
+          key = "sizeMax",
+          mandatory = false,
+          help = "The maximum number of elements in the collection. This option adds or updates "
+              + "`javax.validation.constraints.Size` with the provided value as `max` attribute value.") final Integer sizeMax,
+      @CliOption(
+          key = "notNull",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` annotation to the field. "
+              + "This option is not available if `--nullRequired` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
+      @CliOption(
+          key = "nullRequired",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be null. Adds `javax.validation.constraints.Null` annotation to the field. "
+              + "This option is not available if `--notNull` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean nullRequired,
       @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
-      @CliOption(key = "joinTable", mandatory = true,
-          specifiedDefaultValue = ROO_DEFAULT_JOIN_TABLE_NAME,
-          help = "Join table name. Most usually used in @ManyToMany relations. If "
-              + "name not specified it will take default @JoinTable name value.") final String joinTable,
-      @CliOption(key = "joinColumns", mandatory = true,
-          help = "Comma separated list of join table's foreign key columns which "
-              + "references the table of the entity owning the relation") final String joinColumns,
-      @CliOption(key = "referencedColumns", mandatory = true,
-          help = "Comma separated list of foreign key referenced columns in the table "
-              + "of the entity owning the relation") final String referencedColumns,
-      @CliOption(key = "inverseJoinColumns", mandatory = true,
-          help = "Comma separated list of join table's foreign key columns which "
-              + "references the table of the entity that does not own the relation") final String inverseJoinColumns,
-      @CliOption(key = "inverseReferencedColumns", mandatory = true,
-          help = "Comma separated list of foreign key referenced columns in the table "
-              + "of the entity that does not own the relation") final String inverseReferencedColumns,
+          help = "Indicates whether reserved words are ignored by Roo."
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       @CliOption(
-          key = "cascadeType",
+          key = "entityFormatExpression",
           mandatory = false,
-          unspecifiedDefaultValue = "ALL",
-          specifiedDefaultValue = "ALL",
-          help = "CascadeType. Possible values are ALL, DETACH, MERGE, PERSIST, REFRESH and REMOVE.") final Cascade cascadeType,
+          help = "The SpEL expression used to format the related entity when showing it in presentation layer e.g. "
+              + "{#fieldA} {#fieldB}. It adds the `value` attribute to `io.springlets.format.EntityFormat` "
+              + "annotation."
+              + "This option is available only if `--entityFormatMessage` has not been specified and "
+              + "`--cardinality` is `MANY_TO_ONE`.") String formatExpression,
+      @CliOption(
+          key = "entityFormatMessage",
+          mandatory = false,
+          help = "The message key used to obtain a localized SpEL expression to format the related entity when "
+              + "showing it in presentation layer. It adds the `message` attribute to "
+              + "`io.springlets.format.EntityFormat` annotation and creates a message in all message bundles "
+              + "with the provided key. Message value should be modified by developer."
+              + "This option is available only if `--entityFormatExpression` has not been specified and "
+              + "`--cardinality` is `MANY_TO_ONE`.") String formatMessage,
+      //      @CliOption(key = "cascadeType", mandatory = false, unspecifiedDefaultValue = "ALL",
+      //          specifiedDefaultValue = "ALL",
+      //          help = "CascadeType. Possible values are ALL, DETACH, MERGE, PERSIST, REFRESH "
+      //              + "and REMOVE.") final Cascade cascadeType,
       ShellContext shellContext) {
 
-    // Check if joinTable must have a specified value.
-    checkJoinTableNameMandatory(joinTable);
+    // TODO support multiple cascade type
 
-    final ClassOrInterfaceTypeDetails cid = typeLocationService.getTypeDetails(fieldType);
-    Validate
-        .notNull(cid,
-            "The specified target '--type' does not exist or can not be found. Please create this type first.");
+    getFieldCreatorProvider(typeName).createSetField(typeName, fieldType, fieldName,
+        cardinality.getCardinality(), null, notNull, sizeMin, sizeMax, mappedBy, fetch, comment,
+        joinColumnName, referencedColumnName, joinTable, joinColumns, referencedColumns,
+        inverseJoinColumns, inverseReferencedColumns, permitReservedWords, aggregation,
+        orphanRemoval, shellContext.isForce(), formatExpression, formatMessage);
 
-    final ClassOrInterfaceTypeDetails selfCid = typeLocationService.getTypeDetails(typeName);
-    checkFieldExists(fieldName, shellContext, selfCid);
-
-    getFieldCreatorProvider(typeName).createSetField(cid, cardinality, typeName, fieldType,
-        fieldName, cascadeType, notNull, nullRequired, sizeMin, sizeMax, mappedBy, fetch, comment,
-        joinTable, joinColumns, referencedColumns, inverseJoinColumns, inverseReferencedColumns,
-        permitReservedWords, transientModifier);
   }
 
   @CliOptionVisibilityIndicator(command = "field list", params = {"joinColumns",
@@ -915,6 +1529,35 @@ public class FieldCommands implements CommandMarker {
     JavaType type = getTypeFromCommand(shellContext);
     if (type != null) {
       return getFieldCreatorProvider(type).areJoinTableParamsVisibleForFieldList(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionMandatoryIndicator(command = "field list", params = {"joinColumnName"})
+  public boolean isColumnMandatoryForFieldList(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isJoinColumnNameMandatoryForFieldList(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field list", params = {"joinColumnName"},
+      help = "Option 'joinColumnName' is not available for this type of class")
+  public boolean isJoinColumnNameVisibleForFieldList(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isJoinColumnNameVisibleForFieldList(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field list", params = {"referencedColumnName"},
+      help = "Option 'referencedColumnName' is not available for this type of class")
+  public boolean isReferencedColumnNameVisibleForFieldList(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isReferencedColumnNameVisibleForFieldList(shellContext);
     }
     return false;
   }
@@ -968,16 +1611,6 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
-  @CliOptionVisibilityIndicator(command = "field list", params = {"transient"},
-      help = "Option 'transient' is not available for this type of class")
-  public boolean isTransientVisibleForFieldList(ShellContext shellContext) {
-    JavaType type = getTypeFromCommand(shellContext);
-    if (type != null) {
-      return getFieldCreatorProvider(type).isTransientVisibleForFieldList(shellContext);
-    }
-    return false;
-  }
-
   @CliOptionVisibilityIndicator(command = "field list", params = {"joinTable"},
       help = "Option 'joinTable' is not available for this type of class")
   public boolean isJoinTableVisibleForFieldList(ShellContext shellContext) {
@@ -1016,71 +1649,214 @@ public class FieldCommands implements CommandMarker {
     return new ArrayList<String>();
   }
 
+  @CliOptionVisibilityIndicator(command = "field list", params = {"aggregation", "comment",
+      "fetch", "force", "mappedBy", "notNull", "orphanRemoval", "permitReservedWords", "profile",
+      "sizeMax", "sizeMin"}, help = "--joinTable or --joinColumnName must be defined first.")
+  public boolean areOptionalParametersVisibleForFieldList(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).areOptionalParametersVisibleForFieldList(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field list", params = {"notNull"},
+      help = "Option `--notNull` is not available when option `--nullRequired` "
+          + "has already been specified.")
+  public boolean isNotNullVisibleForFieldList(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNotNullVisibleForFieldList(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field list", params = {"nullRequired"},
+      help = "Option `--nullRequired` is not available if numeric type is primitive "
+          + "or `--notNull` option has been specified.")
+  public boolean isNullRequiredVisibleForFieldList(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNullRequiredVisibleForFieldList(shellContext);
+    }
+    return false;
+  }
+
   @CliCommand(
       value = "field list",
-      help = "Adds a private List field to an existing Java source file (eg the 'one' side of a many-to-one)")
+      help = "Adds a private `List` field to an existing Java source file, representing (always) a "
+          + "bidirectional relation with other entity. Therefore, this command will also add a field "
+          + "on the other side of the relation (the owner side, with `mappedBy` attribute), which will"
+          + " be a `List` field for 'many-to-many' relations, or a *not* `Collection` field for a "
+          + "'one-to-many' relation. All added fields will have the needed JPA annotations to properly "
+          + "manage bidirectional relations."
+          + "This command is only available for entities annotated with `@RooJpaEntity` (Roo JPA "
+          + "entities). Therefore, you should focus the desired entity in the Roo Shell to make "
+          + "this command available.")
   public void addFieldListJpa(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add") final JavaSymbolName fieldName,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = "update,project", help = "The name of the class to receive this field") final JavaType typeName,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
       @CliOption(key = "type", mandatory = true,
-          help = "The entity which will be contained within the Set") final JavaType fieldType,
-      @CliOption(key = "mappedBy", mandatory = false,
-          help = "The field name on the referenced type which owns the relationship") final JavaSymbolName mappedBy,
-      @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
-      @CliOption(key = "sizeMin", mandatory = false,
-          help = "The minimum number of elements in the collection") final Integer sizeMin,
-      @CliOption(key = "sizeMax", mandatory = false,
-          help = "The maximum number of elements in the collection") final Integer sizeMax,
+          help = "The entity related to this one, which will be contained within the `List`. "
+              + "Possible values are: any of the entities in the project.") final JavaType fieldType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module "
+              + "project, simply specify the name of the class in which the field will be included."
+              + " If you consider it necessary, you can also specify the package. "
+              + "Ex.: `--class ~.domain.MyClass` (where `~` is the base package). When working with"
+              + " multiple modules, you should specify the name of the class and the module where "
+              + "it is. Ex.: `--class model:~.domain.MyClass`. If the module is not specified, it "
+              + "is assumed that the class is in the module which has the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo shell.") final JavaType typeName,
+      @CliOption(
+          key = "joinColumnName",
+          mandatory = true,
+          help = "The JPA `@JoinColumn` `name` attribute. When this option is set, cardinality will be set as `ONE_TO_MANY`."
+              + "This option is mandatory for 'ONE_TO_MANY' relationships without join table, "
+              + "if `spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`.") final String joinColumnName,
+      @CliOption(
+          key = "referencedColumnName",
+          mandatory = false,
+          help = "The JPA `@JoinColumn` `referencedColumnName` attribute. This option is only available"
+              + " when `--joinColumnName` option is set.") final String referencedColumnName,
+      @CliOption(
+          key = "joinTable",
+          mandatory = true,
+          help = "Join table name. Most usually used in `@ManyToMany` relations. "
+              + "This option is mandatory for this command if `--cardinality` is set to `MANY_TO_MANY` "
+              + "and `spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`.") final String joinTable,
+      @CliOption(
+          key = "joinColumns",
+          mandatory = true,
+          help = "Comma separated list of join table's foreign key columns which references the table "
+              + "of the related entity (the owner entity in bidirectional relations). "
+              + "This option is mandatory if `--joinTable` option has been specified and if "
+              + "`spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`. "
+              + "This option is only available when `--joinTable` " + "option is set.") final String joinColumns,
+      @CliOption(
+          key = "referencedColumns",
+          mandatory = true,
+          help = "Comma separated list of foreign key referenced columns in the primary table of the "
+              + "related entity (the owner entity in bidirectional relations). "
+              + "This option is mandatory if `--joinTable` option has been specified and if "
+              + "`spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`. "
+              + "This option is only available when `--joinTable` " + "option is set.") final String referencedColumns,
+      @CliOption(
+          key = "inverseJoinColumns",
+          mandatory = true,
+          help = "Comma separated list of join table's foreign key columns which references the table of "
+              + "the entity that does not own the relation (current entity). "
+              + "This option is mandatory if `--joinTable` option has been specified and if "
+              + "`spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`. "
+              + "This option is only available when `--joinTable` " + "option is set.") final String inverseJoinColumns,
+      @CliOption(
+          key = "inverseReferencedColumns",
+          mandatory = true,
+          help = "Comma separated list of foreign key referenced columns in the primary table of the "
+              + "entity that does not own the relation (current entity). "
+              + "This option is mandatory if `--joinTable` option has been specified and if "
+              + "`spring.roo.jpa.require.schema-object-name` configuration setting exists and it's `true`. "
+              + "This option is only available when `--joinTable` " + "option is set.") final String inverseReferencedColumns,
+      @CliOption(
+          key = "mappedBy",
+          mandatory = false,
+          help = "The field name on the referenced type which owns the relationship, which will be also "
+              + "created due to bidirectional relation. If not specified, it will take the lower camel "
+              + "case of the current entity (focused entity or specified in `--class` option). If the "
+              + "field already exists in the related entity, command won't be executed. "
+              + "This option is only available for JPA entities. "
+              + "Default if not present: current entity name in lower camel case.") final JavaSymbolName mappedBy,
       @CliOption(key = "cardinality", mandatory = false, unspecifiedDefaultValue = "ONE_TO_MANY",
           specifiedDefaultValue = "ONE_TO_MANY",
-          help = "The relationship cardinality at a JPA level") Cardinality cardinality,
-      @CliOption(key = "fetch", mandatory = false, help = "The fetch semantics at a JPA level") final Fetch fetch,
-      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
+          help = "The relationship cardinality at a JPA level. " + "Default: `ONE_TO_MANY`.") CardinalitySupported cardinality,
+      @CliOption(
+          key = "fetch",
+          mandatory = false,
+          help = "The fetch semantics at a JPA level. It adds the provided value to `fetch` attribute of "
+              + "JPA `@OneToMany`, `@ManyToMany` and `@ManyToOne`. "
+              + "Possible values are: `LAZY`and `EAGER`. "
+              + "Default if option not present: `LAZY`.") final Fetch fetch,
+      @CliOption(
+          key = "aggregation",
+          mandatory = false,
+          specifiedDefaultValue = "true",
+          unspecifiedDefaultValue = "true",
+          help = "Whether the relationship type is 'aggregation' or 'composition'. An aggregation "
+              + "relation means that children entities aren't dependent from parent entity (current "
+              + "entity) and they can exist without parent entity. In the other hand, in a composition "
+              + "relation the parent entity of the relationship also owns the life cycle of related "
+              + "entities. The parent entity is responsible for the creation and destruction of children"
+              + " entities, these being linked to a single parent entity. A child entity cannot be in two"
+              + " different composition relationships. " + "Default: `true`.") final boolean aggregation,
+      @CliOption(
+          key = "orphanRemoval",
+          mandatory = false,
+          specifiedDefaultValue = "true",
+          help = "Indicates whether to apply the remove operation to entities that have been removed from"
+              + " the relationship and to cascade the remove operation to those entities. If this "
+              + "relation represents a 'composition' relation and this option is not present, "
+              + "`--orphanRemoval` value will be `true`. " + "Default if option present: `true`.") Boolean orphanRemoval,
+      @CliOption(
+          key = "sizeMin",
+          mandatory = false,
+          help = "The minimum number of elements in the collection. This option adds or updates "
+              + "`javax.validation.constraints.Size` with the provided value as `min` attribute value.") final Integer sizeMin,
+      @CliOption(
+          key = "sizeMax",
+          mandatory = false,
+          help = "The maximum number of elements in the collection. This option adds or updates "
+              + "`javax.validation.constraints.Size` with the provided value as `max` attribute value.") final Integer sizeMax,
+      @CliOption(
+          key = "notNull",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` annotation to the field. "
+              + "This option is not available if `--nullRequired` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
+      @CliOption(
+          key = "nullRequired",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be null. Adds `javax.validation.constraints.Null` annotation to the field. "
+              + "This option is not available if `--notNull` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean nullRequired,
+      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs.") final String comment,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
-      @CliOption(key = "joinTable", mandatory = true,
-          specifiedDefaultValue = ROO_DEFAULT_JOIN_TABLE_NAME,
-          help = "Join table name. Most usually used in @ManyToMany relations. If name "
-              + "not specified it will take default @JoinTable name value.") final String joinTable,
-      @CliOption(key = "joinColumns", mandatory = true,
-          help = "Comma separated list of join table's foreign key columns which "
-              + "references the table of the entity owning the relation") final String joinColumns,
-      @CliOption(key = "referencedColumns", mandatory = true,
-          help = "Comma separated list of foreign key referenced columns in the table "
-              + "of the entity owning the relation") final String referencedColumns,
-      @CliOption(key = "inverseJoinColumns", mandatory = true,
-          help = "Comma separated list of join table's foreign key columns which "
-              + "references the table of the entity that does not own the relation") final String inverseJoinColumns,
-      @CliOption(key = "inverseReferencedColumns", mandatory = true,
-          help = "Comma separated list of foreign key referenced columns in the table "
-              + "of the entity that does not own the relation") final String inverseReferencedColumns,
-      @CliOption(key = "cascadeType", mandatory = false, unspecifiedDefaultValue = "ALL",
-          specifiedDefaultValue = "ALL",
-          help = "CascadeType. Possible values are ALL, DETACH, MERGE, PERSIST, REFRESH "
-              + "and REMOVE.") final Cascade cascadeType, ShellContext shellContext) {
+          help = "Indicates whether reserved words are ignored by Roo. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
+      @CliOption(
+          key = "entityFormatExpression",
+          mandatory = false,
+          help = "The SpEL expression used to format the related entity when showing it in presentation layer e.g. "
+              + "`{#fieldA} {#fieldB}`. It adds the `value` attribute to `io.springlets.format.EntityFormat` "
+              + "annotation.") String formatExpression,
+      @CliOption(
+          key = "entityFormatMessage",
+          mandatory = false,
+          help = "The message key used to obtain a localized SpEL expression to format the related entity when "
+              + "showing it in presentation layer. It adds the `message` attribute to "
+              + "`io.springlets.format.EntityFormat` annotation and creates a message in all message bundles "
+              + "with the provided key. Message value should be modified by developer.") String formatMessage,
+      //      @CliOption(key = "cascadeType", mandatory = false, unspecifiedDefaultValue = "ALL",
+      //          specifiedDefaultValue = "ALL",
+      //          help = "CascadeType. Possible values are ALL, DETACH, MERGE, PERSIST, REFRESH "
+      //              + "and REMOVE.") final Cascade cascadeType,
+      ShellContext shellContext) {
 
-    // Check if joinTable must have a specified value.
-    checkJoinTableNameMandatory(joinTable);
+    // TODO Support multiple cascade type
 
-    final ClassOrInterfaceTypeDetails cid = typeLocationService.getTypeDetails(fieldType);
-    Validate.notNull(cid,
-        "The specified target '--type' does not exist or can not be found. Please "
-            + "create this type first.");
-
-    final ClassOrInterfaceTypeDetails selfCid = typeLocationService.getTypeDetails(typeName);
-    checkFieldExists(fieldName, shellContext, selfCid);
-
-    getFieldCreatorProvider(typeName).createListField(cid, cardinality, typeName, fieldType,
-        fieldName, cascadeType, notNull, nullRequired, sizeMin, sizeMax, mappedBy, fetch, comment,
-        joinTable, joinColumns, referencedColumns, inverseJoinColumns, inverseReferencedColumns,
-        permitReservedWords, transientModifier);
+    getFieldCreatorProvider(typeName).createListField(typeName, fieldType, fieldName,
+        cardinality.getCardinality(), null, notNull, sizeMin, sizeMax, mappedBy, fetch, comment,
+        joinColumnName, referencedColumnName, joinTable, joinColumns, referencedColumns,
+        inverseJoinColumns, inverseReferencedColumns, permitReservedWords, aggregation,
+        orphanRemoval, shellContext.isForce(), formatExpression, formatMessage);
 
   }
 
@@ -1151,35 +1927,118 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
+  @CliOptionVisibilityIndicator(command = "field string", params = {"notNull"},
+      help = "Option `--notNull` is not available when option `--nullRequired` "
+          + "has already been specified.")
+  public boolean isNotNullVisibleForFieldString(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNotNullVisibleForFieldString(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field string", params = {"nullRequired"},
+      help = "Option `--nullRequired` is not available if numeric type is primitive "
+          + "or `--notNull` option has been specified.")
+  public boolean isNullRequiredVisibleForFieldString(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNullRequiredVisibleForFieldString(shellContext);
+    }
+    return false;
+  }
+
   @CliCommand(value = "field string",
-      help = "Adds a private string field to an existing Java source file")
+      help = "Adds a private String field to an existing Java source file.")
   public void addFieldString(
-      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of "
-          + "the field to add") final JavaSymbolName fieldName,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
-      @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
-      @CliOption(key = "sizeMin", mandatory = false, help = "The minimum string length") final Integer sizeMin,
-      @CliOption(key = "sizeMax", mandatory = false, help = "The maximum string length") final Integer sizeMax,
-      @CliOption(key = "regexp", mandatory = false,
-          help = "The required regular expression pattern") final String regexp,
-      @CliOption(key = "column", mandatory = true, help = "The JPA @Column name") final String column,
-      @CliOption(key = "value", mandatory = false,
-          help = "Inserts an optional Spring @Value annotation with the given content") final String value,
-      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
+      @CliOption(key = {"", "fieldName"}, mandatory = true, help = "The name of the field to add.") final JavaSymbolName fieldName,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module project, "
+              + "simply specify the name of the class in which the field will be included. If you "
+              + "consider it necessary, you can also specify the package. Ex.: `--class ~.domain.MyClass`"
+              + " (where `~` is the base package). When working with multiple modules, you should specify"
+              + " the name of the class and the module where it is. Ex.: `--class model:~.domain.MyClass`."
+              + " If the module is not specified, it is assumed that the class is in the module which has"
+              + " the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo Shell.") final JavaType typeName,
+      @CliOption(
+          key = "column",
+          mandatory = true,
+          help = "The JPA `@Column` name. "
+              + "This option is mandatory if `spring.roo.jpa.require.schema-object-name` configuration "
+              + "setting exists and it's `true`. "
+              + "This option is only available for JPA entities and embeddable classes.") final String column,
+      @CliOption(
+          key = "transient",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Indicates to mark the field as transient, adding JPA `javax.persistence.Transient` "
+              + "annotation. This marks the field as not persistent. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present:`true`. Default if option not present: `false`") final boolean transientModifier,
+      @CliOption(
+          key = "lob",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Indicates that this field is a Large Object. This option adds `javax.persistence.Lob` "
+              + "annotation to the field. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean lob,
       @CliOption(key = "unique", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether to mark the field with a unique constraint") final boolean unique,
+          help = "Indicates whether to mark the field with a unique constraint. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean unique,
+      @CliOption(
+          key = "regexp",
+          mandatory = false,
+          help = "The required regular expression pattern. This option adds "
+              + "`javax.validation.constraints.Pattern` with the provided value as `regexp` attribute.") final String regexp,
+      @CliOption(
+          key = "sizeMin",
+          mandatory = false,
+          help = "The minimum string length. This option adds or updates "
+              + "`javax.validation.constraints.Size` with the provided value as `min` attribute value.") final Integer sizeMin,
+      @CliOption(
+          key = "sizeMax",
+          mandatory = false,
+          help = "The maximum string length. This option adds or updates "
+              + "`javax.validation.constraints.Size` with the provided value as `max` attribute value.") final Integer sizeMax,
+      @CliOption(
+          key = "notNull",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` annotation to the field. "
+              + "This option is not available if `--nullRequired` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
+      @CliOption(
+          key = "nullRequired",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be null. Adds `javax.validation.constraints.Null` annotation to the field. "
+              + "This option is not available if `--notNull` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean nullRequired,
+      @CliOption(
+          key = "value",
+          mandatory = false,
+          help = "Inserts an optional Spring `org.springframework.beans.factory.annotation.Value` "
+              + "annotation with the given content, typically used for expression-driven dependency "
+              + "injection.") final String value,
+      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs.") final String comment,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
-      @CliOption(key = "lob", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates that this field is a Large Object") final boolean lob,
+          help = "Indicates whether reserved words are ignored by Roo. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       ShellContext shellContext) {
 
     final ClassOrInterfaceTypeDetails cid = typeLocationService.getTypeDetails(typeName);
@@ -1230,22 +2089,49 @@ public class FieldCommands implements CommandMarker {
   }
 
   @CliCommand(value = "field file",
-      help = "Adds a byte array field for storing uploaded file contents (JSF-scaffolded UIs only)")
+      help = "Adds a byte array field for storing uploaded file contents.")
   public void addFileUploadField(
       @CliOption(key = {"", "fieldName"}, mandatory = true,
-          help = "The name of the file upload field to add") final JavaSymbolName fieldName,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
-      @CliOption(key = "contentType", mandatory = true, help = "The content type of the file") final UploadedFileContentType contentType,
+          help = "The name of the file upload field to add.") final JavaSymbolName fieldName,
+      @CliOption(key = "contentType", mandatory = true, help = "The content type of the file. "
+          + "Possible values are: `CSS`, `CSV`, `DOC`, `GIF`, `HTML`, `JAVASCRIPT`, `JPG`, "
+          + "`JSON`, `MP3`, `MP4`, `MPEG`, `PDF`, `PNG`, `TXT`, `XLS`, `XML` and `ZIP`.") final UploadedFileContentType contentType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module project, "
+              + "simply specify the name of the class in which the field will be included. If you "
+              + "consider it necessary, you can also specify the package. Ex.: `--class ~.domain.MyClass`"
+              + " (where `~` is the base package). When working with multiple modules, you should specify"
+              + " the name of the class and the module where it is. Ex.: `--class model:~.domain.MyClass`."
+              + " If the module is not specified, it is assumed that the class is in the module which has"
+              + " the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo Shell.") final JavaType typeName,
+      @CliOption(
+          key = "column",
+          mandatory = true,
+          help = "The JPA `@Column` name. "
+              + "This option is mandatory if `spring.roo.jpa.require.schema-object-name` configuration "
+              + "setting exists and it's `true`. "
+              + "This option is only available for JPA entities and embeddable classes.") final String column,
       @CliOption(key = "autoUpload", mandatory = false, specifiedDefaultValue = "true",
           unspecifiedDefaultValue = "false",
-          help = "Whether the file is uploaded automatically when selected") final boolean autoUpload,
-      @CliOption(key = "column", mandatory = true, help = "The JPA @Column name") final String column,
-      @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
+          help = "Whether the file is uploaded automatically when selected. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean autoUpload,
+      @CliOption(
+          key = "notNull",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` annotation to the field."
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
+          help = "Indicates whether reserved words are ignored by Roo."
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       ShellContext shellContext) {
 
     final ClassOrInterfaceTypeDetails cid = typeLocationService.getTypeDetails(typeName);
@@ -1304,25 +2190,84 @@ public class FieldCommands implements CommandMarker {
     return false;
   }
 
-  @CliCommand(value = "field other", help = "Inserts a private field into the specified file")
+  @CliOptionVisibilityIndicator(command = "field other", params = {"notNull"},
+      help = "Option `--notNull` is not available when option `--nullRequired` "
+          + "has already been specified.")
+  public boolean isNotNullVisibleForFieldOther(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNotNullVisibleForFieldOther(shellContext);
+    }
+    return false;
+  }
+
+  @CliOptionVisibilityIndicator(command = "field other", params = {"nullRequired"},
+      help = "Option `--nullRequired` is not available if numeric type is primitive "
+          + "or `--notNull` option has been specified.")
+  public boolean isNullRequiredVisibleForFieldOther(ShellContext shellContext) {
+    JavaType type = getTypeFromCommand(shellContext);
+    if (type != null) {
+      return getFieldCreatorProvider(type).isNullRequiredVisibleForFieldOther(shellContext);
+    }
+    return false;
+  }
+
+  @CliCommand(
+      value = "field other",
+      help = "Inserts a private field into the specified file. User can choose a custom type for the field by specifying its fully qualified name.")
   public void insertField(
-      @CliOption(key = "fieldName", mandatory = true, help = "The name of the field") final JavaSymbolName fieldName,
-      @CliOption(key = "type", mandatory = true, help = "The Java type of this field") final JavaType fieldType,
-      @CliOption(key = "class", mandatory = true, unspecifiedDefaultValue = "*",
-          optionContext = UPDATE_PROJECT, help = "The name of the class to receive this field") final JavaType typeName,
+      @CliOption(key = "fieldName", mandatory = true, help = "The name of the field.") final JavaSymbolName fieldName,
+      @CliOption(key = "type", mandatory = true, help = "The Java type of this field.") final JavaType fieldType,
+      @CliOption(
+          key = "class",
+          mandatory = true,
+          unspecifiedDefaultValue = "*",
+          optionContext = UPDATE_PROJECT,
+          help = "The name of the class to generate the field. When working on a mono module "
+              + "project, simply specify the name of the class in which the field will be included."
+              + " If you consider it necessary, you can also specify the package. "
+              + "Ex.: `--class ~.domain.MyClass` (where `~` is the base package). When working "
+              + "with multiple modules, you should specify the name of the class and the module "
+              + "where it is. Ex.: `--class model:~.domain.MyClass`. If the module is not "
+              + "specified, it is assumed that the class is in the module which has the focus. "
+              + "This option is mandatory for this command when the focus is not set to one class. "
+              + "Default if option not present: the class focused by Roo Shell.") final JavaType typeName,
+      @CliOption(key = "column", mandatory = true, help = "The JPA `@Column` name."
+          + "This option is mandatory if `spring.roo.jpa.require.schema-object-name` configuration"
+          + " setting exists and it's `true`. "
+          + "This option is only available for JPA entities and embeddable classes.") final String column,
+      @CliOption(
+          key = "transient",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Indicates to mark the field as transient, adding JPA `javax.persistence.Transient` "
+              + "annotation. This marks the field as not persistent. "
+              + "This option is only available for JPA entities and embeddable classes. "
+              + "Default if option present:`true`. Default if option not present: `false`") final boolean transientModifier,
       @CliOption(key = "notNull", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value cannot be null") final boolean notNull,
-      @CliOption(key = "nullRequired", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Whether this value must be null") final boolean nullRequired,
-      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs") final String comment,
-      @CliOption(key = "column", mandatory = true, help = "The JPA @Column name") final String column,
+          specifiedDefaultValue = "true",
+          help = "Whether this value cannot be null. Adds `javax.validation.constraints.NotNull` "
+              + "annotation to the field. "
+              + "This option is not available if `--nullRequired` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean notNull,
+      @CliOption(
+          key = "nullRequired",
+          mandatory = false,
+          unspecifiedDefaultValue = "false",
+          specifiedDefaultValue = "true",
+          help = "Whether this value must be null. Adds `javax.validation.constraints.Null` annotation to the field. "
+              + "This option is not available if `--notNull` has already been specified. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean nullRequired,
+      @CliOption(key = "comment", mandatory = false, help = "An optional comment for JavaDocs.") final String comment,
       @CliOption(key = "value", mandatory = false,
-          help = "Inserts an optional Spring @Value annotation with the given content") final String value,
-      @CliOption(key = "transient", mandatory = false, unspecifiedDefaultValue = "false",
-          specifiedDefaultValue = "true", help = "Indicates to mark the field as transient") final boolean transientModifier,
+          help = "Inserts an optional Spring `org.springframework.beans.factory.annotation.Value` "
+              + "annotation with the given content, typically used for expression-driven "
+              + "dependency injection.") final String value,
       @CliOption(key = "permitReservedWords", mandatory = false, unspecifiedDefaultValue = "false",
           specifiedDefaultValue = "true",
-          help = "Indicates whether reserved words are ignored by Roo") final boolean permitReservedWords,
+          help = "Indicates whether reserved words are ignored by Roo. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean permitReservedWords,
       ShellContext shellContext) {
 
     final ClassOrInterfaceTypeDetails cid = typeLocationService.getTypeDetails(typeName);
@@ -1334,8 +2279,10 @@ public class FieldCommands implements CommandMarker {
         nullRequired, comment, column, permitReservedWords, transientModifier);
   }
 
+  // Availability indicators //
+
   @CliAvailabilityIndicator({"field other", "field number", "field string", "field date",
-      "field boolean", "field enum", "field file", "field set", "field list"})
+      "field boolean", "field enum", "field file"})
   public boolean isFieldManagementAvailable() {
     return getFieldCreatorAvailable();
   }
@@ -1358,13 +2305,25 @@ public class FieldCommands implements CommandMarker {
     return getFieldCreatorAvailable();
   }
 
+  @CliAvailabilityIndicator({"field set", "field list"})
+  public boolean isFieldCollectionAvailable() {
+    JavaType type = lastUsed.getJavaType();
+    if (type != null) {
+      return getFieldCreatorProvider(type).isFieldCollectionAvailable();
+    }
+    return getFieldCreatorAvailable();
+  }
+
+
   /**
-   * Checks if entity has already a field with the same name and throws an exception 
+   * Checks if entity has already a field with the same name and throws an exception
    * in that case.
-   * 
+   *
    * @param fieldName
    * @param shellContext
    * @param javaTypeDetails
+   *
+   * @deprecated this should be done by operation class (see JpaFieldCreatorProvider.checkFieldExists)
    */
   private void checkFieldExists(final JavaSymbolName fieldName, ShellContext shellContext,
       final ClassOrInterfaceTypeDetails javaTypeDetails) {
@@ -1384,35 +2343,11 @@ public class FieldCommands implements CommandMarker {
   }
 
   /**
-   * Checks if exists some project setting that makes @JoinTable name mandatory. Throws 
-   * an exception with a message if exists property {@link #SPRING_ROO_JPA_REQUIRE_SCHEMA_OBJECT_NAME} 
-   * on project settings and its value is "true". Else, continue.
-   * 
-   * @param joinTable
-   */
-  private void checkJoinTableNameMandatory(String joinTable) {
-    if (joinTable == null) {
-      return;
-    } else if (ROO_DEFAULT_JOIN_TABLE_NAME.equals(joinTable)) {
-
-      // Check if property 'spring.roo.jpa.require.schema-object-name' is defined on project settings
-      String requiredSchemaObjectName =
-          projectSettings.getProperty(SPRING_ROO_JPA_REQUIRE_SCHEMA_OBJECT_NAME);
-
-      if (requiredSchemaObjectName != null && requiredSchemaObjectName.equals("true")) {
-        throw new IllegalArgumentException(
-            "It is mandatory to assign a specific table name for --joinTable. Please, "
-                + "assign it a table name.");
-      }
-    }
-  }
-
-  /**
-   * Tries to obtain JavaType indicated in command or which has the focus 
+   * Tries to obtain JavaType indicated in command or which has the focus
    * in the Shell
-   * 
+   *
    * @param shellContext the Roo Shell context
-   * @return JavaType or null if no class has the focus or no class is 
+   * @return JavaType or null if no class has the focus or no class is
    * specified in the command
    */
   private JavaType getTypeFromCommand(ShellContext shellContext) {
@@ -1429,7 +2364,7 @@ public class FieldCommands implements CommandMarker {
 
   /**
    * Gets the right implementation of FieldCreatorProvider for a JavaType
-   * 
+   *
    * @param type the JavaType to get the implementation
    * @return FieldCreatorProvider implementation
    */
@@ -1464,9 +2399,9 @@ public class FieldCommands implements CommandMarker {
   }
 
   /**
-   * Checks all FieldCreator implementations looking for any available 
-   * 
-   * @return <code>true</code> if any of the implementations is available or 
+   * Checks all FieldCreator implementations looking for any available
+   *
+   * @return <code>true</code> if any of the implementations is available or
    * <code>false</code> if none of the implementations are available.
    */
   private boolean getFieldCreatorAvailable() {
@@ -1527,7 +2462,7 @@ public class FieldCommands implements CommandMarker {
 
   /**
    * Replaces a JavaType fullyQualifiedName for a shorter name using '~' for TopLevelPackage
-   * 
+   *
    * @param cid ClassOrInterfaceTypeDetails of a JavaType
    * @param currentText String current text for option value
    * @return the String representing a JavaType with its name shortened
@@ -1570,7 +2505,7 @@ public class FieldCommands implements CommandMarker {
     if ((StringUtils.isBlank(currentText) || auxString.startsWith(currentText))
         && StringUtils.contains(javaTypeFullyQualilfiedName, topLevelPackageString)) {
 
-      // Value is for autocomplete only or user wrote abbreviate value  
+      // Value is for autocomplete only or user wrote abbreviate value
       javaTypeString = auxString;
     } else {
 

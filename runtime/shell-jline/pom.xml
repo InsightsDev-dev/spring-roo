@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.springframework.roo</groupId>
         <artifactId>org.springframework.roo.osgi.bundle</artifactId>
-        <version>2.0.0.BUILD-SNAPSHOT</version>
+        <version>2.0.0.RC1</version>
         <relativePath>../../runtime/osgi-bundle</relativePath>
     </parent>
     <artifactId>org.springframework.roo.shell.jline</artifactId>
@@ -39,16 +39,25 @@
             <artifactId>org.apache.felix.scr.annotations</artifactId>
         </dependency>
     </dependencies>
-    
+
     <build>
         <plugins>
             <plugin>
                 <groupId>com.googlecode.maven-java-formatter-plugin</groupId>
                 <artifactId>maven-java-formatter-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-bundle-plugin</artifactId>
+                <configuration>
+                    <instructions>
+                        <Import-Package>*,org.fusesource.jansi;version="[1.4.0,2.0.0)";resolution:=optional</Import-Package>
+                    </instructions>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
-    
+
     <properties>
         <main.basedir>${basedir}/../..</main.basedir>
     </properties>

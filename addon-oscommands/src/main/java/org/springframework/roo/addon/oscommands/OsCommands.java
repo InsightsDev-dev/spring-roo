@@ -16,7 +16,7 @@ import org.springframework.roo.support.logging.HandlerUtils;
 /**
  * Command type to allow execution of native OS commands from the Spring Roo
  * shell.
- * 
+ *
  * @author Stefan Schmidt
  * @since 1.2.0
  */
@@ -29,10 +29,11 @@ public class OsCommands implements CommandMarker {
   @Reference
   private OsOperations osOperations;
 
-  @CliCommand(value = "!", help = "Allows execution of operating system (OS) commands.")
-  public void command(
-      @CliOption(key = {"", "command"}, mandatory = false, specifiedDefaultValue = "",
-          unspecifiedDefaultValue = "", help = "The command to execute") final String command) {
+  @CliCommand(value = "!os", help = "Allows execution of operating system (OS) commands. "
+      + "Ex.: `!os mkdir test_dir`")
+  public void command(@CliOption(key = {"", "command"}, mandatory = false,
+      specifiedDefaultValue = "", unspecifiedDefaultValue = "",
+      help = "The OS command to execute. " + "Default: ''") final String command) {
 
     if (StringUtils.isNotBlank(command)) {
       try {
@@ -43,7 +44,7 @@ public class OsCommands implements CommandMarker {
     }
   }
 
-  @CliAvailabilityIndicator("!")
+  @CliAvailabilityIndicator("!os")
   public boolean isCommandAvailable() {
     return true; // This command is always available!
   }

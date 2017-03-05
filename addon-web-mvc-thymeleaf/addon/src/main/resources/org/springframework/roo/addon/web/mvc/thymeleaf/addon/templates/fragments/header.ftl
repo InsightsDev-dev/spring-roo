@@ -4,22 +4,22 @@
     <meta charset="UTF-8" />
     <title>Header</title>
   </head>
-  <body>
+<#if userManagedComponents?has_content && userManagedComponents["body"]??>
+  ${userManagedComponents["body"]}
+<#else>
+  <body id="body">
     <!--
     Only the internal content of the following div is included within
     the template, in header fragment
     -->
-    <div data-layout-fragment="header">
-
-      <div class="bg-header">
+    <div class="bg-header" data-th-fragment="header">
         <div class="jumbotron bg-banner">
             <div class="container">
               <h1 class="project-name">${projectName}</h1>
-              <h2 class="project-tagline" data-th-text="${r"#{"}info_homepage_project${r"}"}">Hello, this is your home page.</h2>
+              <p class="project-tagline" data-th-text="${r"#{"}info_homepage_project}">Hello, this is your home page.</p>
             </div>
         </div>
-      </div>
-
     </div>
   </body>
+</#if>
 </html>

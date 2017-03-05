@@ -2,12 +2,6 @@ package org.springframework.roo.addon.pushin;
 
 import static org.springframework.roo.shell.OptionContexts.PROJECT;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
@@ -18,6 +12,7 @@ import org.osgi.framework.ServiceReference;
 import org.osgi.service.component.ComponentContext;
 import org.springframework.roo.classpath.TypeLocationService;
 import org.springframework.roo.classpath.details.MethodMetadata;
+import org.springframework.roo.classpath.details.annotations.AnnotatedJavaType;
 import org.springframework.roo.classpath.scanner.MemberDetails;
 import org.springframework.roo.classpath.scanner.MemberDetailsScanner;
 import org.springframework.roo.model.JavaPackage;
@@ -32,12 +27,18 @@ import org.springframework.roo.shell.Converter;
 import org.springframework.roo.shell.ShellContext;
 import org.springframework.roo.support.logging.HandlerUtils;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 /**
  * Commands for the 'push-in' add-on to be used by the ROO shell.
- * 
+ *
  * This command marker will provide necessary operations to make push-in of all
  * methods, fields and annotations declared on ITDs.
- * 
+ *
  * @author Juan Carlos García
  * @since 2.0
  */
@@ -65,9 +66,9 @@ public class PushInCommands implements CommandMarker {
 
   /**
    * Method that checks if push-in operation is available or not.
-   * 
+   *
    * "push-in" command will be available only if some project was generated.
-   * 
+   *
    * @return true if some project was created on focused directory.
    */
   @CliAvailabilityIndicator("push-in")
@@ -77,10 +78,10 @@ public class PushInCommands implements CommandMarker {
 
   /**
    * Method that checks visibility of --all parameter.
-   * 
-   * This parameter will be available only if --package, --class or --method 
+   *
+   * This parameter will be available only if --package, --class or --method
    * parameter has not been specified before.
-   * 
+   *
    * @param context
    *            ShellContext used to obtain specified parameters
    * @return true if --all parameter is visible, false if not.
@@ -103,10 +104,10 @@ public class PushInCommands implements CommandMarker {
 
   /**
    * Method that checks visibility of --package, --class and --method parameters.
-   * 
-   * This parameter will be available only if --all parameter 
+   *
+   * This parameter will be available only if --all parameter
    * has not been specified before.
-   * 
+   *
    * @param context
    *            ShellContext used to obtain specified parameters
    * @return true if parameters are visible, false if not.
@@ -127,7 +128,7 @@ public class PushInCommands implements CommandMarker {
 
   /**
    * Method that returns all defined methods for provided class on --class parameter.
-   * 
+   *
    * @param context context
    *            ShellContext used to obtain specified parameters
    * @return List with available methods. Empty List if class has not been specified.
@@ -140,14 +141,15 @@ public class PushInCommands implements CommandMarker {
     // Getting all introduces parameters
     Map<String, String> specifiedParameters = context.getParameters();
 
+    String specifiedClass = specifiedParameters.get("class");
+
     // Check if class parameter has been specified
-    if (specifiedParameters.containsKey("class")) {
-      String specifiedClass = specifiedParameters.get("class");
+    if (StringUtils.isNotEmpty(specifiedClass)) {
       JavaType klass =
           getJavaTypeConverter().convertFromText(specifiedClass, JavaType.class, PROJECT);
 
-      // TODO: Class details should be cached to prevent load MemberDetails everytime. 
-      // The problem is that if some element is cached, and then, new  method is added 
+      // TODO: Class details should be cached to prevent load MemberDetails everytime.
+      // The problem is that if some element is cached, and then, new  method is added
       // to .aj file, this parameter will not autocomplete it.
       MemberDetails klassDetails =
           memberDetailsScanner.getMemberDetails(getClass().getName(),
@@ -166,7 +168,25 @@ public class PushInCommands implements CommandMarker {
               && !declaredByMetadataID.split("\\#")[0]
                   .equals("MID:org.springframework.roo.classpath.PhysicalTypeIdentifier")
               && declaredByMetadataID.split("\\?")[1].equals(klass.getFullyQualifiedTypeName())) {
-            allPossibleMethods.add(method.getMethodName().getSymbolName());
+
+            String methodName = method.getMethodName().getSymbolName();
+
+            List<AnnotatedJavaType> parameterTypes = method.getParameterTypes();
+
+            methodName = methodName.concat("(");
+
+            for (int i = 0; i < parameterTypes.size(); i++) {
+              String paramType = parameterTypes.get(i).getJavaType().getSimpleTypeName();
+              methodName = methodName.concat(paramType).concat(",");
+            }
+
+            if (!parameterTypes.isEmpty()) {
+              methodName = methodName.substring(0, methodName.length() - 1).concat(")");
+            } else {
+              methodName = methodName.concat(")");
+            }
+
+            allPossibleMethods.add(methodName);
           }
         }
       }
@@ -177,17 +197,17 @@ public class PushInCommands implements CommandMarker {
 
   /**
    * Method that register "push-in" command on Spring Roo Shell.
-   * 
-   * Push-in all methods, fields, annotations, imports, extends, etc.. declared on 
+   *
+   * Push-in all methods, fields, annotations, imports, extends, etc.. declared on
    * ITDs to its .java files. You could specify --all parameter to apply push-in on every
-   * component of generated project, or you could define package, class or method where wants 
+   * component of generated project, or you could define package, class or method where wants
    * to apply push-in.
-   * 
+   *
    * @param all
    *            String that indicates if push-in process should be applied to entire project. All specified
    *            values will be ignored.
-   * @param package 
-   *            JavaPackage with the specified package where developers wants to make 
+   * @param package
+   *            JavaPackage with the specified package where developers wants to make
    *            push-in
    * @param klass
    *            JavaType with the specified class where developer wants to
@@ -197,25 +217,48 @@ public class PushInCommands implements CommandMarker {
    *            developer wants to push-in
    * @param shellContext
    *            ShellContext used to know if --force parameter has been used by developer
-   *    
+   *
    */
   @CliCommand(
       value = "push-in",
-      help = "Push-in all methods, fields, annotations, imports, extends, etc.. declared on  ITDs to its .java files. You could specify --all parameter to apply push-in on every component of generated project, or you could define package, class or method where wants to apply push-in.")
+      help = "Allows to push-in elements declared in the ITDs to its .java files. You could specify "
+          + "`--all` option to apply push-in on every component of generated project, or you could "
+          + "define any package, class or method to apply push-in, combining them.")
   public void pushIn(
       @CliOption(
           key = "all",
           mandatory = false,
           specifiedDefaultValue = "",
-          help = "Parameter that indicates if push-in process should be applied to entire project. If specified, all the other parameters will be unavailable. It doesn't allow any value.") String all,
-      @CliOption(key = "package", mandatory = false,
-          help = "JavaPackage with the specified package where developers wants to make push-in") JavaPackage specifiedPackage,
-      @CliOption(key = "class", mandatory = false,
-          help = "JavaType with the specified class where developer wants to make push-in") final JavaType klass,
+          help = "Option that indicates if push-in process should be applied to entire project. "
+              + "This option is mandatory if none of `--package`, `--class` or `--method` are specified. "
+              + "Otherwise, using `--package`, `--class` or `--method` will cause the parameter `--all` "
+              + "won't be available.") String all,
+      @CliOption(
+          key = "package",
+          mandatory = false,
+          help = "JavaPackage with the specified package where developer wants to make push-in. In "
+              + "multi-module project you should specify the module name before the package name. "
+              + "Ex.: `--package model:org.springframework.roo` but, if module name is not present, "
+              + "the Roo Shell focused module will be used. "
+              + "This option is not avalaible if `--all` parameter has been already specified.") JavaPackage specifiedPackage,
+      @CliOption(
+          key = "class",
+          mandatory = false,
+          help = "JavaType with the specified class where developer wants to make push-in. When working "
+              + "on a single module project, simply specify the name of the class. If you consider it "
+              + "necessary, you can also specify the package. Ex.: `--class ~.domain.MyClass` (where `~` "
+              + "is the base package). When working with multiple modules, you should specify the name "
+              + "of the class and the module where it is. Ex.: `--class model:~.domain.MyClass`. If the "
+              + "module is not specified, it is assumed that the class is in the module which has the "
+              + "focus. "
+              + "This option is not avalaible if `--all` parameter has been already specified.") final JavaType klass,
       @CliOption(
           key = "method",
           mandatory = false,
-          help = "String with the specified name of the method that developer wants to push-in. You could use a Regular Expression to make push-in of more than one method on the same execution.") String method,
+          help = "String with the specified name of the method which developer wants to push-in. "
+              + "You could use a Regular Expression to make push-in of more than one method on the same "
+              + "execution. "
+              + "This option is not avalaible if `--all` parameter has been already specified.") String method,
       ShellContext shellContext) {
 
     // Developer must specify at least one parameter
@@ -239,9 +282,9 @@ public class PushInCommands implements CommandMarker {
 
     // Check if developer wants to apply push-in on every component of generated project
     if (all != null) {
-      pushInOperations.pushInAll(shellContext.isForce());
+      pushInOperations.pushInAll(true, shellContext.isForce());
     } else {
-      pushInOperations.pushIn(specifiedPackage, klass, method);
+      pushInOperations.pushIn(specifiedPackage, klass, method, true);
     }
 
   }

@@ -1,5 +1,9 @@
 package org.springframework.roo.model;
 
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Validate;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,10 +17,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.Vector;
 
-import org.apache.commons.lang3.ClassUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Validate;
-
 /**
  * The declaration of a Java type (i.e. contains no details of its members).
  * Instances are immutable.
@@ -28,7 +28,7 @@ import org.apache.commons.lang3.Validate;
  * provides convenient ways to determine the type's simple name and package
  * name. A related {@link org.springframework.core.convert.converter.Converter}
  * is also offered.
- * 
+ *
  * @author Ben Alex
  * @since 1.0
  */
@@ -55,14 +55,22 @@ public class JavaType implements Comparable<JavaType> {
   public static final JavaType FLOAT_OBJECT = new JavaType("java.lang.Float");
   public static final JavaType FLOAT_PRIMITIVE = new JavaType("java.lang.Float", 0,
       DataType.PRIMITIVE, null, null);
+  public static final JavaType HASH_MAP = new JavaType("java.util.HashMap");
+  public static final JavaType HASH_SET = new JavaType("java.util.HashSet");
   public static final JavaType INT_OBJECT = new JavaType("java.lang.Integer");
   public static final JavaType INT_PRIMITIVE = new JavaType("java.lang.Integer", 0,
       DataType.PRIMITIVE, null, null);
+  public static final JavaType LIST = new JavaType("java.util.List");
   public static final JavaType LONG_OBJECT = new JavaType("java.lang.Long");
   public static final JavaType LONG_PRIMITIVE = new JavaType("java.lang.Long", 0,
       DataType.PRIMITIVE, null, null);
   public static final JavaType OBJECT = new JavaType("java.lang.Object");
+  public static final JavaType OBJECTS = new JavaType("java.util.Objects");
+  public static final JavaType OBJECT_ARRAY = new JavaType("java.lang.Object", 1, DataType.TYPE,
+      null, null);
+  public static final JavaType NUMBER = new JavaType("java.lang.Number");
   public static final JavaType SERIALIZABLE = new JavaType("java.io.Serializable");
+  public static final JavaType SET = new JavaType("java.util.Set");
   public static final JavaType SHORT_OBJECT = new JavaType("java.lang.Short");
   public static final JavaType SHORT_PRIMITIVE = new JavaType("java.lang.Short", 0,
       DataType.PRIMITIVE, null, null);
@@ -70,6 +78,34 @@ public class JavaType implements Comparable<JavaType> {
   public static final JavaType STRING_ARRAY = new JavaType("java.lang.String", 1, DataType.TYPE,
       null, null);
   public static final JavaType OVERRIDE = new JavaType("java.lang.Override");
+  public static final JavaType ITERABLE = new JavaType("java.lang.Iterable");
+  public static final JavaType ITERATOR = new JavaType("java.util.Iterator");
+  public static final JavaType ARRAYS = new JavaType("java.util.Arrays");
+  public static final JavaType COLLECTIONS = new JavaType("java.util.Collections");
+  public static final JavaType ARRAY_LIST = new JavaType("java.util.ArrayList");
+
+  // javax types
+  public static final JavaType REQUEST_WRAPPER = new JavaType("javax.xml.ws.RequestWrapper");
+  public static final JavaType RESPONSE_WRAPPER = new JavaType("javax.xml.ws.ResponseWrapper");
+  public static final JavaType ENDPOINT = new JavaType("javax.xml.ws.Endpoint");
+  public static final JavaType WEB_METHOD = new JavaType("javax.jws.WebMethod");
+  public static final JavaType WEB_PARAM = new JavaType("javax.jws.WebParam");
+  public static final JavaType WEB_RESULT = new JavaType("javax.jws.WebResult");
+  public static final JavaType WEB_SERVICE = new JavaType("javax.jws.WebService");
+  public static final JavaType XML_ROOT_ELEMENT = new JavaType(
+      "javax.xml.bind.annotation.XmlRootElement");
+  public static final JavaType XML_ID_REF = new JavaType("javax.xml.bind.annotation.XmlIDREF");
+  public static final JavaType XML_ELEMENT = new JavaType("javax.xml.bind.annotation.XmlElement");
+  public static final JavaType XML_ELEMENT_WRAPPER = new JavaType(
+      "javax.xml.bind.annotation.XmlElementWrapper");
+  public static final JavaType XML_TRANSIENT = new JavaType(
+      "javax.xml.bind.annotation.XmlTransient");
+  public static final JavaType XML_ID = new JavaType("javax.xml.bind.annotation.XmlID");
+  public static final JavaType XML_ATTRIBUTE = new JavaType(
+      "javax.xml.bind.annotation.XmlAttribute");
+  public static final JavaType XML_JAVATYPE_ADAPTER = new JavaType(
+      "javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter");
+
 
   /**
    * @deprecated use {@link #STRING} instead
@@ -81,13 +117,21 @@ public class JavaType implements Comparable<JavaType> {
   public static final JavaType VOID_PRIMITIVE = new JavaType("java.lang.Void", 0,
       DataType.PRIMITIVE, null, null);
   // Used for wildcard type parameters; it must be one or the other
-  public static final JavaSymbolName WILDCARD_EXTENDS =
-      new JavaSymbolName("_ROO_WILDCARD_EXTENDS_"); // List<? extends YY>
+  public static final JavaSymbolName WILDCARD_EXTENDS_ARG = new JavaSymbolName(
+      "_ROO_WILDCARD_EXTENDS_"); // List<? extends YY>
 
-  public static final JavaSymbolName WILDCARD_NEITHER =
-      new JavaSymbolName("_ROO_WILDCARD_NEITHER_"); // List<?>
+  public static final JavaSymbolName WILDCARD_NEITHER_ARG = new JavaSymbolName(
+      "_ROO_WILDCARD_NEITHER_"); // List<?>
 
-  public static final JavaSymbolName WILDCARD_SUPER = new JavaSymbolName("_ROO_WILDCARD_SUPER_"); // List<? super XXXX>
+  public static final JavaSymbolName GENERIC_TYPE_ARG = new JavaSymbolName("T"); // List<?>
+
+  public static final JavaType WILDCARD_NEITHER = new JavaType(OBJECT.getFullyQualifiedTypeName(),
+      0, DataType.TYPE, JavaType.WILDCARD_NEITHER_ARG, null);
+
+  public static final JavaType GENERIC_TYPE = new JavaType("T");
+
+  public static final JavaSymbolName WILDCARD_SUPER_ARG =
+      new JavaSymbolName("_ROO_WILDCARD_SUPER_"); // List<? super XXXX>
 
   static {
     COMMON_COLLECTION_TYPES.add(ArrayList.class.getName());
@@ -107,7 +151,7 @@ public class JavaType implements Comparable<JavaType> {
    * setting these non-default values. This is a factory method rather than a
    * constructor so as not to cause ambiguity problems for existing callers of
    * {@link #JavaType(String, int, DataType, JavaSymbolName, List)}
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the rules above)
    * @param arrayDimensions the number of array dimensions (0 = not an array,
    *            1 = one-dimensional array, etc.)
@@ -132,7 +176,7 @@ public class JavaType implements Comparable<JavaType> {
    * setting these non-default values. This is a factory method rather than a
    * constructor so as not to cause ambiguity problems for existing callers of
    * {@link #JavaType(String, int, DataType, JavaSymbolName, List)}
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the rules above)
    * @param enclosingType the type's enclosing type
    * @param arrayDimensions the number of array dimensions (0 = not an array,
@@ -153,14 +197,127 @@ public class JavaType implements Comparable<JavaType> {
   }
 
   /**
-   * Returns a {@link JavaType} for a list of the given element type
-   * 
+   * Returns a {@link JavaType} for a {@link List} of the given element type
+   *
    * @param elementType the type of element in the list (required)
    * @return a non-<code>null</code> type
    * @since 1.2.0
    */
   public static JavaType listOf(final JavaType elementType) {
     return new JavaType(List.class.getName(), 0, DataType.TYPE, null, Arrays.asList(elementType));
+  }
+
+  /**
+   * Returns a {@link JavaType} for a {@link Map} of the given element type
+   *
+   * @param elementType the type of element in the list (required)
+   * @return a non-<code>null</code> type
+   * @since 2.0.0
+   */
+  public static JavaType mapOf(final JavaType keyType, final JavaType elementType) {
+    return new JavaType(Map.class.getName(), 0, DataType.TYPE, null, Arrays.asList(keyType,
+        elementType));
+  }
+
+  /**
+   * Returns a {@link JavaType} for a {@link Iterable} of the given element type
+   *
+   * @param elementType the type of element in the list (required)
+   * @return a non-<code>null</code> type
+   * @since 2.0.0
+   */
+  public static JavaType iterableOf(final JavaType elementType) {
+    return new JavaType(Iterable.class.getName(), 0, DataType.TYPE, null,
+        Arrays.asList(elementType));
+  }
+
+
+  /**
+   * Returns a {@link JavaType} for a {@link Collection} of the given element type
+   *
+   * @param elementType the type of element in the list (required)
+   * @return a non-<code>null</code> type
+   * @since 2.0.0
+   */
+  public static JavaType collectionOf(final JavaType elementType) {
+    return new JavaType(Collection.class.getName(), 0, DataType.TYPE, null,
+        Arrays.asList(elementType));
+  }
+
+  /**
+   * Returns a {@link JavaType} for a _collectionType_ of the given element type
+   *
+   * @param elementType the type of element in the list (required)
+   * @return a non-<code>null</code> type
+   * @since 2.0.0
+   */
+  public static JavaType collectionOf(final JavaType collectionType, final JavaType elementType) {
+    return new JavaType(collectionType.getFullyQualifiedTypeName(), 0, DataType.TYPE, null,
+        Arrays.asList(elementType));
+  }
+
+  /**
+   * Returns a {@link JavaType} for a _wrapperType_ of the given element type:
+   * By example: JavaType.wrapperOf(JavaType.MAP,JavaType.STRING,JavaType.STRING) returns
+   * "Map<String,String>"
+   *
+   * @param elementType the type of element in the list (required)
+   * @return a non-<code>null</code> type
+   * @since 2.0.0
+   */
+  public static JavaType wrapperOf(final JavaType wrapperType, final JavaType... elementTypes) {
+    return new JavaType(wrapperType.getFullyQualifiedTypeName(), 0, DataType.TYPE, null,
+        Arrays.asList(elementTypes));
+  }
+
+  /**
+   * Returns a {@link JavaType} for a _wrapperType_ with wildcard:
+   * JavaType.wrapperWilcard(JavaType.LIST) return List<?>
+   *
+   * @param elementType the type of element in the list (required)
+   * @return a non-<code>null</code> type
+   * @since 2.0.0
+   */
+  public static JavaType wrapperWilcard(final JavaType wrapperType) {
+    return wrapperOf(wrapperType, WILDCARD_NEITHER);
+  }
+
+  /**
+   * Returns a {@link JavaType} for a _wrapperType_ with generic:
+   * JavaType.wrapperWilcard(JavaType.LIST) return List<T>
+   *
+   * @param elementType the type of element in the list (required)
+   * @return a non `null` type
+   * @since 2.0.0
+   */
+  public static JavaType wrapperGenericType(final JavaType wrapperType) {
+    return wrapperOf(wrapperType, GENERIC_TYPE);
+  }
+
+  /** Return {@link JavaType} which is a Widcard of generics with "extends"
+   * value.
+   *
+   * By exampe: JavaType.listOf(JavaType.wilcardExtends(JavaType.NUMBER)) generates List<? extends Number>
+   *
+   * @param extendsOf
+   * @return
+   */
+  public static JavaType wilcardExtends(final JavaType extendsOf) {
+    return new JavaType(extendsOf.getFullyQualifiedTypeName(), 0, DataType.TYPE,
+        JavaType.WILDCARD_EXTENDS_ARG, null);
+  }
+
+  /** Return {@link JavaType} which is a Widcard of generics with "supper"
+   * value.
+   *
+   * By exampe: JavaType.listOf(JavaType.wilcardSupper(JavaType.NUMBER)) generates List<? supper Number>
+   *
+   * @param supperOf
+   * @return
+   */
+  public static JavaType wilcardSupper(final JavaType supperOf) {
+    return new JavaType(supperOf.getFullyQualifiedTypeName(), 0, DataType.TYPE,
+        JavaType.WILDCARD_SUPER_ARG, null);
   }
 
   private final JavaSymbolName argName;
@@ -176,7 +333,7 @@ public class JavaType implements Comparable<JavaType> {
   /**
    * Constructor equivalent to {@link #JavaType(String)}, but takes a Class
    * for convenience and type safety.
-   * 
+   *
    * @param type the class for which to create an instance (required)
    * @since 1.2.0
    */
@@ -195,7 +352,7 @@ public class JavaType implements Comparable<JavaType> {
    * </ul>
    * <p>
    * A fully qualified type name may include or exclude a package designator.
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the above rules;
    *            mandatory)
    */
@@ -214,7 +371,7 @@ public class JavaType implements Comparable<JavaType> {
    * </ul>
    * <p>
    * A fully qualified type name may include or exclude a package designator.
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the above rules;
    *            mandatory)
    * @param module the module where is created (optional)
@@ -227,7 +384,7 @@ public class JavaType implements Comparable<JavaType> {
    * Construct a {@link JavaType} with full details. Recall that
    * {@link JavaType} is immutable and therefore this is the only way of
    * setting these non-default values.
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the rules above)
    * @param arrayDimensions the number of array dimensions (0 = not an array,
    *            1 = one-dimensional array, etc.)
@@ -247,7 +404,7 @@ public class JavaType implements Comparable<JavaType> {
    * Construct a {@link JavaType} with full details. Recall that
    * {@link JavaType} is immutable and therefore this is the only way of
    * setting these non-default values.
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the rules above)
    * @param arrayDimensions the number of array dimensions (0 = not an array,
    *            1 = one-dimensional array, etc.)
@@ -275,7 +432,7 @@ public class JavaType implements Comparable<JavaType> {
    * </ul>
    * <p>
    * A fully qualified type name may include or exclude a package designator.
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the above rules;
    *            mandatory)
    * @param enclosingType the type's enclosing type
@@ -296,7 +453,7 @@ public class JavaType implements Comparable<JavaType> {
    * </ul>
    * <p>
    * A fully qualified type name may include or exclude a package designator.
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the above rules;
    *            mandatory)
    * @param enclosingType the type's enclosing type
@@ -312,7 +469,7 @@ public class JavaType implements Comparable<JavaType> {
    * Construct a {@link JavaType} with full details. Recall that
    * {@link JavaType} is immutable and therefore this is the only way of
    * setting these non-default values.
-   * 
+   *
    * @param fullyQualifiedTypeName the name (as per the rules above)
    * @param enclosingType the type's enclosing type
    * @param arrayDimensions the number of array dimensions (0 = not an array,
@@ -432,7 +589,7 @@ public class JavaType implements Comparable<JavaType> {
   /**
    * Returns this type's base type, being <code>this</code> for single-valued
    * types, otherwise the element type for collection types.
-   * 
+   *
    * @return <code>null</code> for an untyped collection
    * @since 1.2.1
    */
@@ -470,7 +627,7 @@ public class JavaType implements Comparable<JavaType> {
    * Obtains the name of this type, including type parameters. It will be
    * formatted in a manner compatible with non-static use. No type name import
    * resolution will take place. This is a side-effect free method.
-   * 
+   *
    * @return the type name, including parameters, as legal Java code (never
    *         null or empty)
    */
@@ -484,7 +641,7 @@ public class JavaType implements Comparable<JavaType> {
    * as per the passed argument. Type names will attempt to be resolved (and
    * automatically registered) using the passed resolver. This method will
    * have side-effects on the passed resolver.
-   * 
+   *
    * @param staticForm true if the output should be compatible with static use
    * @param resolver the resolver to use (may be null in which case no import
    *            resolution will occur)
@@ -512,21 +669,21 @@ public class JavaType implements Comparable<JavaType> {
 
     final StringBuilder sb = new StringBuilder();
 
-    if (WILDCARD_EXTENDS.equals(argName)) {
+    if (WILDCARD_EXTENDS_ARG.equals(argName)) {
       sb.append("?");
       if (dataType == DataType.TYPE || !staticForm) {
         sb.append(" extends ");
       } else if (types.containsKey(fullyQualifiedTypeName)) {
         sb.append(" extends ").append(types.get(fullyQualifiedTypeName));
       }
-    } else if (WILDCARD_SUPER.equals(argName)) {
+    } else if (WILDCARD_SUPER_ARG.equals(argName)) {
       sb.append("?");
       if (dataType == DataType.TYPE || !staticForm) {
         sb.append(" super ");
       } else if (types.containsKey(fullyQualifiedTypeName)) {
         sb.append(" extends ").append(types.get(fullyQualifiedTypeName));
       }
-    } else if (WILDCARD_NEITHER.equals(argName)) {
+    } else if (WILDCARD_NEITHER_ARG.equals(argName)) {
       sb.append("?");
     } else if (argName != null && !staticForm) {
       sb.append(argName);
@@ -537,12 +694,12 @@ public class JavaType implements Comparable<JavaType> {
       }
     }
 
-    if (!WILDCARD_NEITHER.equals(argName)) {
+    if (!WILDCARD_NEITHER_ARG.equals(argName)) {
       // It wasn't a WILDCARD_NEITHER, so we might need to continue with
       // more details
       if (dataType == DataType.TYPE || !staticForm) {
         if (resolver != null) {
-          if (resolver.isFullyQualifiedFormRequiredAfterAutoImport(this)) {
+          if (resolver.isFullyQualifiedFormRequiredAfterAutoImport(this, staticForm)) {
             sb.append(fullyQualifiedTypeName);
           } else {
             sb.append(getSimpleTypeName());
@@ -578,8 +735,8 @@ public class JavaType implements Comparable<JavaType> {
       sb.append(getArraySuffix());
     }
 
-    if (argName != null && !argName.equals(WILDCARD_EXTENDS) && !argName.equals(WILDCARD_SUPER)
-        && !argName.equals(WILDCARD_NEITHER)) {
+    if (argName != null && !argName.equals(WILDCARD_EXTENDS_ARG)
+        && !argName.equals(WILDCARD_SUPER_ARG) && !argName.equals(WILDCARD_NEITHER_ARG)) {
       types.put(argName.getSymbolName(), sb.toString());
     }
 
@@ -620,7 +777,7 @@ public class JavaType implements Comparable<JavaType> {
    * from its base package. For example, for a type called "com.example.Foo",
    * this method returns "com/example/Foo.java", delimited by the platform-
    * specific separator ("/" in this example).
-   * 
+   *
    * @return a non-blank path
    */
   public String getRelativeFileName() {
@@ -658,7 +815,7 @@ public class JavaType implements Comparable<JavaType> {
 
   /**
    * Indicates whether this type is any kind of boolean.
-   * 
+   *
    * @return see above
    * @since 1.2.1
    */
@@ -672,7 +829,7 @@ public class JavaType implements Comparable<JavaType> {
 
   /**
    * Indicates whether this type is part of core Java.
-   * 
+   *
    * @return see above
    */
   public boolean isCoreType() {
@@ -691,7 +848,7 @@ public class JavaType implements Comparable<JavaType> {
   /**
    * Indicates whether a field or variable of this type can contain multiple
    * values
-   * 
+   *
    * @return see above
    * @since 1.2.0
    */
@@ -701,7 +858,7 @@ public class JavaType implements Comparable<JavaType> {
 
   /**
    * Indicates whether this type is any kind of number
-   * 
+   *
    * @return see above
    * @since 2.0
    */
@@ -716,7 +873,7 @@ public class JavaType implements Comparable<JavaType> {
   /**
    * Indicates whether this type is a primitive, or in the case of an array,
    * whether its elements are primitive.
-   * 
+   *
    * @return see above
    */
   public boolean isPrimitive() {

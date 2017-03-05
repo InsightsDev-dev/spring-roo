@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
+import org.springframework.roo.model.JavaPackage;
 import org.springframework.roo.model.JavaType;
 import org.springframework.roo.project.Dependency;
 import org.springframework.roo.project.LogicalPath;
@@ -17,6 +18,7 @@ import org.springframework.roo.project.maven.Pom;
  * @author Alan Stewart
  * @author James Tyrrell
  * @author Paula Navarro
+ * @author Sergio Clares
  * @since 1.1
  */
 public interface TypeLocationService {
@@ -100,6 +102,22 @@ public interface TypeLocationService {
    * @return a set of types that have the specified annotations.
    */
   Set<JavaType> findTypesWithAnnotation(List<JavaType> annotationsToDetect);
+
+  /**
+   * Returns a list with all JavaPackages for a given module.
+   * 
+   * @param module the Pom of the module to search for.
+   * @return a List<JavaPackage> with all the module packages.
+   */
+  List<JavaPackage> getPackagesForModule(Pom module);
+
+  /**
+   * Returns a list with all JavaPackages for a given module.
+   * 
+   * @param module the String with the module name to search for.
+   * @return a List<JavaPackage> with all the module packages.
+   */
+  List<JavaPackage> getPackagesForModule(String moduleName);
 
   /**
    * Returns the canonical path that the given {@link JavaType} would have

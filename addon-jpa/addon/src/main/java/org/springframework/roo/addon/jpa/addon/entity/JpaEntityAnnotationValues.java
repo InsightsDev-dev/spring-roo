@@ -1,9 +1,9 @@
 package org.springframework.roo.addon.jpa.addon.entity;
 
-import static org.springframework.roo.addon.jpa.annotations.entity.RooJpaEntity.VERSION_FIELD_DEFAULT;
-
 import org.springframework.roo.addon.jpa.annotations.entity.RooJpaEntity;
-import org.springframework.roo.classpath.details.annotations.populator.*;
+import org.springframework.roo.classpath.details.annotations.populator.AbstractAnnotationValues;
+import org.springframework.roo.classpath.details.annotations.populator.AutoPopulate;
+import org.springframework.roo.classpath.details.annotations.populator.AutoPopulationUtils;
 import org.springframework.roo.classpath.itd.MemberHoldingTypeDetailsMetadataItem;
 import org.springframework.roo.model.JavaType;
 
@@ -12,6 +12,7 @@ import org.springframework.roo.model.JavaType;
  * 
  * @author Andrew Swan
  * @author Juan Carlos García
+ * @author Sergio Clares
  * @since 1.2.0
  */
 public class JpaEntityAnnotationValues extends AbstractAnnotationValues {
@@ -21,31 +22,19 @@ public class JpaEntityAnnotationValues extends AbstractAnnotationValues {
   @AutoPopulate
   private String entityName = "";
   @AutoPopulate
-  private String identifierColumn = "";
-  @AutoPopulate
-  private String identifierField = "";
-  @AutoPopulate
-  private JavaType identifierType;
-  @AutoPopulate
   private String inheritanceType = "";
   @AutoPopulate
   private boolean mappedSuperclass;
   @AutoPopulate
   private String schema = "";
   @AutoPopulate
-  private String sequenceName = null;
-  @AutoPopulate
-  private String identifierStrategy = IdentifierStrategy.AUTO.name();
-  @AutoPopulate
   private String table = "";
   @AutoPopulate
-  private String versionColumn = "";
-  @AutoPopulate
-  private String versionField = VERSION_FIELD_DEFAULT;
-  @AutoPopulate
-  private JavaType versionType = JavaType.INT_OBJECT;
-  @AutoPopulate
   private boolean readOnly;
+  @AutoPopulate
+  private String entityFormatMessage = "";
+  @AutoPopulate
+  private String entityFormatExpression = "";
 
   /**
    * Constructor for reading the values of the given annotation
@@ -70,18 +59,6 @@ public class JpaEntityAnnotationValues extends AbstractAnnotationValues {
     return entityName;
   }
 
-  public String getIdentifierColumn() {
-    return identifierColumn;
-  }
-
-  public String getIdentifierField() {
-    return identifierField;
-  }
-
-  public JavaType getIdentifierType() {
-    return identifierType;
-  }
-
   public String getInheritanceType() {
     return inheritanceType;
   }
@@ -90,28 +67,8 @@ public class JpaEntityAnnotationValues extends AbstractAnnotationValues {
     return schema;
   }
 
-  public String getSequenceName() {
-    return sequenceName;
-  }
-
-  public String getIdentifierStrategy() {
-    return identifierStrategy;
-  }
-
   public String getTable() {
     return table;
-  }
-
-  public String getVersionColumn() {
-    return versionColumn;
-  }
-
-  public String getVersionField() {
-    return versionField;
-  }
-
-  public JavaType getVersionType() {
-    return versionType;
   }
 
   public boolean isMappedSuperclass() {
@@ -121,4 +78,13 @@ public class JpaEntityAnnotationValues extends AbstractAnnotationValues {
   public boolean isReadOnly() {
     return readOnly;
   }
+
+  public String getEntityFormatExpression() {
+    return entityFormatExpression;
+  }
+
+  public String getEntityFormatMessage() {
+    return entityFormatMessage;
+  }
+
 }

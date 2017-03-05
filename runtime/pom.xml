@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.roo</groupId>
         <artifactId>org.springframework.roo.root</artifactId>
-        <version>2.0.0.BUILD-SNAPSHOT</version>
+        <version>2.0.0.RC1</version>
         <relativePath>..</relativePath>
     </parent>
     <artifactId>org.springframework.roo.runtime</artifactId>
@@ -37,7 +37,6 @@
         <module>url-stream</module>
         <module>obr-manager</module>
         <module>suite-manager</module>
-        <module>rest-publisher</module>
         <module>application-config</module>
         <module>settings</module>
         <module>converters</module>
@@ -203,7 +202,8 @@
             <dependency>
                 <groupId>org.eclipse.equinox</groupId>
                 <artifactId>org.eclipse.equinox.region</artifactId>
-                <version>1.2.101.v20150831-1342</version>
+                <!--<version>1.2.101.v20150831-1342</version>-->
+                <version>1.1.0.v20120522-1841</version>
             </dependency>
 
             <!-- OSGi Metatype Service -->

@@ -31,7 +31,7 @@ public class FieldDetails {
   private String column;
 
   /** Any JavaDoc comments (reserved for future expansion) */
-  protected String comment = "";
+  protected String comment;
 
   /** The name of the field to be added */
   private final JavaSymbolName fieldName;
@@ -205,5 +205,17 @@ public class FieldDetails {
 
   public void setAnnotations(List<AnnotationMetadataBuilder> annotations) {
     this.annotations = annotations;
+  }
+
+  public void addAnnotations(List<AnnotationMetadataBuilder> annotations) {
+    if (annotations == null || annotations.isEmpty()) {
+      return;
+    }
+
+    // Initialize annotations if needed
+    if (this.annotations == null) {
+      this.annotations = new ArrayList<AnnotationMetadataBuilder>();
+    }
+    this.annotations.addAll(annotations);
   }
 }

@@ -19,7 +19,7 @@ import org.springframework.roo.support.logging.HandlerUtils;
 
 /**
  * Enables a user to obtain Help
- * 
+ *
  * @author Juan Carlos García
  * @since 1.3
  */
@@ -52,14 +52,16 @@ public class HelpCommands implements CommandMarker {
 
   @CliCommand(
       value = REFERENCE_GUIDE_COMMAND,
-      help = "Writes the reference guide XML fragments (in DocBook format) into the current working directory")
+      help = "Writes the reference guide XML fragments (in DocBook format) into the current working directory. "
+          + "It is only available if 'development mode' is `true`.")
   public void helpReferenceGuide() {
     helpService.helpReferenceGuide();
   }
 
-  @CliCommand(value = HELP_COMMAND, help = "Shows system help")
+  @CliCommand(value = HELP_COMMAND, help = "Shows a summary of all Spring Roo commands.")
   public void obtainHelp(@CliOption(key = {"", "command"}, optionContext = "availableCommands",
-      help = "Command name to provide help for") final String buffer) {
+      help = "Command name to provide help for. When command name has more than one word, it "
+          + "should be between quotation marks.") final String buffer) {
 
     helpService.obtainHelp(buffer);
   }

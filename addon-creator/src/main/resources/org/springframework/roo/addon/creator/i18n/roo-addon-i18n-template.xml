@@ -19,25 +19,11 @@
     <description>An add-on created by Spring Roo's addon creator feature.</description>
     <url>http://www.some.company</url>
     <properties>
-        <roo.version>2.0.0.BUILD-SNAPSHOT</roo.version>
+        <roo.version>2.0.0.RC1</roo.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <osgi.version>5.0.0</osgi.version>
         <scr.plugin.version>1.20.0</scr.plugin.version>
     </properties>
-    <repositories>
-        <repository>
-            <id>spring-roo-repository</id>
-            <name>Spring Roo Repository</name>
-            <url>http://spring-roo-repository.springsource.org/release</url>
-        </repository>
-    </repositories>
-    <pluginRepositories>
-        <pluginRepository>
-            <id>spring-roo-repository</id>
-            <name>Spring Roo Repository</name>
-            <url>http://spring-roo-repository.springsource.org/release</url>
-        </pluginRepository>
-    </pluginRepositories>
     <dependencies>
         <!-- OSGi -->
         <dependency>
@@ -62,9 +48,9 @@
             <artifactId>org.springframework.roo.support</artifactId>
             <version>${roo.version}</version>
         </dependency>
-        <dependency>
+         <dependency>
             <groupId>org.springframework.roo</groupId>
-            <artifactId>org.springframework.roo.addon.web.mvc.jsp</artifactId>
+            <artifactId>org.springframework.roo.addon.web.mvc.i18n</artifactId>
             <version>${roo.version}</version>
         </dependency>
     </dependencies>

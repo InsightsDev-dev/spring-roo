@@ -35,7 +35,7 @@ import org.springframework.roo.support.logging.HandlerUtils;
 /**
  * This class provides necessary commands to be able to include views on
  * generated project
- * 
+ *
  * @author Juan Carlos García
  * @since 2.0
  */
@@ -59,10 +59,10 @@ public class ViewCommands implements CommandMarker {
 
   /**
    * This indicator checks if --module parameter should be visible or not.
-   * 
+   *
    * If exists more than one module that match with the properties of ModuleFeature APPLICATION,
    * --module parameter should be visible.
-   * 
+   *
    * @param shellContext
    * @return
    */
@@ -76,11 +76,11 @@ public class ViewCommands implements CommandMarker {
   }
 
   /**
-   * This indicator checks if --module parameter should be mandatory or not. 
-   * 
+   * This indicator checks if --module parameter should be mandatory or not.
+   *
    * If focused module doesn't match with the properties of ModuleFeature APPLICATION,
    * --module parameter should be mandatory.
-   * 
+   *
    * @param shellContext
    * @return
    */
@@ -96,9 +96,9 @@ public class ViewCommands implements CommandMarker {
 
   /**
    * This indicator returns all possible values for --type parameter.
-   * 
+   *
    * Only not installed response types will be provided.
-   * 
+   *
    * @param context
    * @return
    */
@@ -122,10 +122,10 @@ public class ViewCommands implements CommandMarker {
 
   /**
    * This method checks if web mvc view setup command is available or not.
-   * 
-   * View setup command will be available if exists some type that 
+   *
+   * View setup command will be available if exists some type that
    * has not been installed.
-   * 
+   *
    * @return
    */
   @CliAvailabilityIndicator("web mvc view setup")
@@ -137,19 +137,29 @@ public class ViewCommands implements CommandMarker {
   /**
    * This method provides the Command definition to be able to install
    * provided responseType on generated project
-   * 
+   *
    * @param type
    * @param module
    */
-  @CliCommand(value = "web mvc view setup",
-      help = "Includes all necessary resources of provided responseType on generated project")
+  @CliCommand(
+      value = "web mvc view setup",
+      help = "Includes all necessary resources of provided response type on generated project. This "
+          + "response type will be needed by `web mvc controller`, `web mvc detail` and "
+          + "`web mvc templates setup` commands.")
   public void setup(
+      @CliOption(key = "type", mandatory = true,
+          help = "View identifier you want to install. This is known as 'responseType' in other "
+              + "`web mvc` commands.") String type,
       @CliOption(
-          key = "type",
+          key = "module",
           mandatory = true,
-          help = "View identifier you want to install. Install your necessary views before to be used on controller generation command") String type,
-      @CliOption(key = "module", mandatory = true,
-          help = "The application module where to install views", unspecifiedDefaultValue = ".",
+          help = "The application module where to install views. "
+              + "This option is mandatory if the focus is not set in an application module, that is, a "
+              + "module containing an `@SpringBootApplication` class. "
+              + "This option is available only if there are more than one application module and none of "
+              + " them is focused. "
+              + "Default if option not present: the unique 'application' module, or focused 'application'"
+              + " module.", unspecifiedDefaultValue = ".",
           optionContext = APPLICATION_FEATURE_INCLUDE_CURRENT_MODULE) Pom module) {
 
     Map<String, ControllerMVCResponseService> responseTypes = getControllerMVCResponseTypes(false);
@@ -162,9 +172,9 @@ public class ViewCommands implements CommandMarker {
 
   /**
    * This indicator returns all possible values for --type parameter.
-   * 
+   *
    * Only installed response types will be provided.
-   * 
+   *
    * @param context
    * @return
    */
@@ -193,10 +203,10 @@ public class ViewCommands implements CommandMarker {
 
   /**
    * This method checks if web mvc templates setup command is available or not.
-   * 
-   * Templates setup command will be available if exists some type that 
+   *
+   * Templates setup command will be available if exists some type that
    * has been installed.
-   * 
+   *
    * @return
    */
   @CliAvailabilityIndicator("web mvc templates setup")
@@ -208,19 +218,21 @@ public class ViewCommands implements CommandMarker {
   /**
    * This method provides the Command definition to be able to install
    * view generation templates on current project.
-   * 
+   *
    * Installing this templates, developers will be able to customize view generation.
-   * 
+   *
    * @param  type
    */
   @CliCommand(
       value = "web mvc templates setup",
-      help = "Includes view generation templates on current project. Will allow developers to customize view generation.")
+      help = "Includes view generation templates on current project. Will allow developers to customize "
+          + "view generation by modifying the templates from _[PROJECT-ROOT]/.roo/templates/..._")
   public void installTemplates(
       @CliOption(
           key = "type",
           mandatory = true,
-          help = "View identifier of templates you want to install. Only installed views are available.") String type) {
+          help = "View identifier of templates you want to install. Only installed views are available. "
+              + "Views can be installed with `web mvc view setup` command.") String type) {
 
     Map<String, ControllerMVCResponseService> responseTypes = getControllerMVCResponseTypes(true);
     if (!responseTypes.containsKey(type)) {
@@ -305,9 +317,9 @@ public class ViewCommands implements CommandMarker {
    * This method gets all implementations of ControllerMVCResponseService interface to be able
    * to locate all ControllerMVCResponseService. Uses param installed to obtain only the installed
    * or not installed response types.
-   * 
+   *
    * @param installed indicates if returned responseType should be installed or not.
-   * 
+   *
    * @return Map with responseTypes identifier and the ControllerMVCResponseService implementation
    */
   public Map<String, ControllerMVCResponseService> getControllerMVCResponseTypes(boolean installed) {
@@ -344,7 +356,7 @@ public class ViewCommands implements CommandMarker {
   /**
    * This method gets MVCViewGenerationService implementation that contains necessary operations
    * to install templates inside generated project.
-   * 
+   *
    * @param type
    * @return
    */

@@ -35,6 +35,7 @@ import java.util.GregorianCalendar;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -46,7 +47,7 @@ import org.apache.commons.lang3.Validate;
 /**
  * Constants for JDK {@link JavaType}s. Use them in preference to creating new
  * instances of these types.
- * 
+ *
  * @author Alan Stewart
  * @since 1.2.0
  */
@@ -80,6 +81,7 @@ public final class JdkJavaType {
   public static final JavaType GREGORIAN_CALENDAR = new JavaType(GregorianCalendar.class);
   public static final JavaType HASH_SET = new JavaType(HashSet.class);
   public static final JavaType ITERATOR = new JavaType(Iterator.class);
+  public static final JavaType ILLEGAL_STATE_EXCEPTION = new JavaType(IllegalStateException.class);
 
   private static final List<String> javaLangSimpleTypeNames = new ArrayList<String>();
   private static final List<String> javaLangTypes = new ArrayList<String>();
@@ -97,6 +99,7 @@ public final class JdkJavaType {
   public static final JavaType SERIALIZABLE = new JavaType(Serializable.class);
   public static final JavaType SET = new JavaType(Set.class);
   public static final JavaType SIMPLE_DATE_FORMAT = new JavaType(SimpleDateFormat.class);
+  public static final JavaType STRING_BUILDER = new JavaType(StringBuilder.class);
   public static final JavaType STRUCT = new JavaType(Struct.class);
   public static final JavaType SUPPRESS_WARNINGS = new JavaType(SuppressWarnings.class);
   // java.sql
@@ -105,6 +108,7 @@ public final class JdkJavaType {
   public static final JavaType UNSUPPORTED_ENCODING_EXCEPTION = new JavaType(
       UnsupportedEncodingException.class);
 
+  public static final JavaType LOCALE = new JavaType(Locale.class);
   // Static methods
 
   static {
@@ -221,7 +225,7 @@ public final class JdkJavaType {
   /**
    * Determines whether the presented java type is in the java.lang package or
    * not.
-   * 
+   *
    * @param javaType the Java type (required)
    * @return whether the type is declared as part of java.lang
    */
@@ -238,7 +242,7 @@ public final class JdkJavaType {
   /**
    * Determines whether the presented simple type name is part of java.lang or
    * not.
-   * 
+   *
    * @param simpleTypeName the simple type name (required)
    * @return whether the type is declared as part of java.lang
    */

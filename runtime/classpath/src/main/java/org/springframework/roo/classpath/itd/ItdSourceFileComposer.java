@@ -3,10 +3,12 @@ package org.springframework.roo.classpath.itd;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
 import org.springframework.roo.classpath.PhysicalTypeCategory;
@@ -15,7 +17,6 @@ import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
 import org.springframework.roo.classpath.details.ConstructorMetadata;
 import org.springframework.roo.classpath.details.DeclaredFieldAnnotationDetails;
 import org.springframework.roo.classpath.details.DeclaredMethodAnnotationDetails;
-import org.springframework.roo.classpath.details.DefaultClassOrInterfaceTypeDetails;
 import org.springframework.roo.classpath.details.FieldMetadata;
 import org.springframework.roo.classpath.details.ItdTypeDetails;
 import org.springframework.roo.classpath.details.MethodMetadata;
@@ -23,6 +24,8 @@ import org.springframework.roo.classpath.details.annotations.AnnotatedJavaType;
 import org.springframework.roo.classpath.details.annotations.AnnotationMetadata;
 import org.springframework.roo.classpath.details.comments.AbstractComment;
 import org.springframework.roo.classpath.details.comments.CommentStructure;
+import org.springframework.roo.classpath.details.comments.CommentStructure.CommentLocation;
+import org.springframework.roo.classpath.details.comments.JavadocComment;
 import org.springframework.roo.model.ImportRegistrationResolver;
 import org.springframework.roo.model.ImportRegistrationResolverImpl;
 import org.springframework.roo.model.JavaSymbolName;
@@ -35,6 +38,7 @@ import org.springframework.roo.model.JavaType;
  * @author Stefan Schmidt
  * @author Alan Stewart
  * @author Juan Carlos García
+ * @author Sergio Clares
  * @since 1.0
  */
 public class ItdSourceFileComposer {
@@ -65,10 +69,13 @@ public class ItdSourceFileComposer {
     resolver = new ImportRegistrationResolverImpl(itdTypeDetails.getAspect().getPackage());
     resolver.addImport(introductionTo); // ROO-2932
 
-    for (final JavaType registeredImport : itdTypeDetails.getRegisteredImports()) {
+    SortedMap<JavaType, Boolean> imports = itdTypeDetails.getRegisteredImports();
+    for (final Entry<JavaType, Boolean> entry : imports.entrySet()) {
+      JavaType registeredImport = entry.getKey();
+      boolean asStatic = entry.getValue();
       // Do a sanity check in case the user misused it
       if (resolver.isAdditionLegal(registeredImport)) {
-        resolver.addImport(registeredImport);
+        resolver.addImport(registeredImport, asStatic);
       }
     }
 
@@ -117,6 +124,66 @@ public class ItdSourceFileComposer {
       Validate.isTrue(constructor.getParameterTypes().size() == constructor.getParameterNames()
           .size(), "Mismatched parameter names against parameter types");
 
+      // ROO-3447: Append comments if exists
+      CommentStructure commentStructure = constructor.getCommentStructure();
+      if (commentStructure != null && commentStructure.getBeginComments() != null) {
+        List<AbstractComment> constructorComments = commentStructure.getBeginComments();
+        String comment = "";
+        boolean missingComponentsAdded = false;
+        for (AbstractComment constructorComment : constructorComments) {
+
+          // Join all JavadocComment's
+          if (constructorComment instanceof JavadocComment) {
+
+            // Add JavaDoc missing components
+            if (!missingComponentsAdded) {
+              if (!constructor.getParameterNames().isEmpty()
+                  && ((JavadocComment) constructorComment).getParamsInfo() == null) {
+                List<String> paramsInfo = new ArrayList<String>();
+                for (JavaSymbolName name : constructor.getParameterNames()) {
+                  paramsInfo.add(name.getSymbolName());
+                }
+                ((JavadocComment) constructorComment).setParamsInfo(paramsInfo);
+              }
+            }
+            missingComponentsAdded = true;
+
+            comment =
+                comment.concat(constructorComment.getComment()).concat(IOUtils.LINE_SEPARATOR);
+          } else {
+
+            // Not JavadocComment, write comment as it is, unchanged
+            appendFormalLine(constructorComment.getComment());
+          }
+        }
+
+        // Write JavadocComment's to ITD, in a single JavadocComment instance
+        String[] commentLines = comment.split(IOUtils.LINE_SEPARATOR);
+        for (String commentLine : commentLines) {
+          appendFormalLine(commentLine);
+        }
+      } else {
+
+        // ROO-3834: Append default Javadoc if not exists a comment structure, 
+        // including constructor params
+        CommentStructure defaultCommentStructure = new CommentStructure();
+        List<String> parameterNames = new ArrayList<String>();
+        for (JavaSymbolName name : constructor.getParameterNames()) {
+          parameterNames.add(name.getSymbolName());
+        }
+        JavadocComment javadocComment =
+            new JavadocComment("TODO Auto-generated constructor documentation", parameterNames,
+                null, null);
+        defaultCommentStructure.addComment(javadocComment, CommentLocation.BEGINNING);
+        constructor.setCommentStructure(defaultCommentStructure);
+
+        // Now lines should be formatted, so write them
+        String[] comment = javadocComment.getComment().split(IOUtils.LINE_SEPARATOR);
+        for (String line : comment) {
+          appendFormalLine(line);
+        }
+      }
+
       // Append annotations
       for (final AnnotationMetadata annotation : constructor.getAnnotations()) {
         appendIndent();
@@ -142,7 +209,7 @@ public class ItdSourceFileComposer {
         final AnnotatedJavaType paramType = parameterTypes.get(i);
         final JavaSymbolName paramName = parameterNames.get(i);
         for (final AnnotationMetadata methodParameterAnnotation : paramType.getAnnotations()) {
-          append(AnnotationMetadataUtils.toSourceForm(methodParameterAnnotation));
+          append(AnnotationMetadataUtils.toSourceForm(methodParameterAnnotation, resolver));
           append(" ");
         }
         append(paramType.getJavaType().getNameIncludingTypeParameters(false, resolver));
@@ -196,8 +263,19 @@ public class ItdSourceFileComposer {
 
     content = true;
 
-    appendIndent();
-    append("declare precedence: ");
+
+    // If only exists one aspect, means that 
+    // it should take the lower precedence.
+    if (aspects.size() == 1) {
+      appendFormalLine("/*");
+      appendFormalLine(" * This Aspect takes the lower precedence");
+      appendFormalLine(" */");
+      appendIndent();
+      append("declare precedence: *, ");
+    } else {
+      appendIndent();
+      append("declare precedence: ");
+    }
 
     List<String> aspectNames = new ArrayList<String>(aspects.size());
 
@@ -248,6 +326,43 @@ public class ItdSourceFileComposer {
 
     content = true;
     for (final FieldMetadata field : fields) {
+
+      // ROO-3447: Append comments if exists
+      CommentStructure commentStructure = field.getCommentStructure();
+      if (commentStructure != null && commentStructure.getBeginComments() != null) {
+        List<AbstractComment> comments = commentStructure.getBeginComments();
+        String commentString = "";
+        for (AbstractComment comment : comments) {
+
+          // Join all JavadocComment's
+          if (comment instanceof JavadocComment) {
+            commentString =
+                commentString.concat(comment.getComment()).concat(IOUtils.LINE_SEPARATOR);
+          } else {
+
+            // Not JavadocComment, write comment as it is, unchanged
+            appendFormalLine(comment.getComment());
+          }
+        }
+
+        // Write JavadocComment's to ITD, in a single JavadocComment instance
+        String[] commentLines = commentString.split(IOUtils.LINE_SEPARATOR);
+        for (String commentLine : commentLines) {
+          appendFormalLine(commentLine);
+        }
+      } else {
+
+        // ROO-3834: Append default Javadoc if not exists a comment structure
+        JavadocComment javadocComment =
+            new JavadocComment("TODO Auto-generated attribute documentation");
+
+        // Now lines should be formatted, so write them
+        String[] comment = javadocComment.getComment().split(IOUtils.LINE_SEPARATOR);
+        for (String line : comment) {
+          appendFormalLine(line);
+        }
+      }
+
       // Append annotations
       for (final AnnotationMetadata annotation : field.getAnnotations()) {
         appendIndent();
@@ -441,7 +556,8 @@ public class ItdSourceFileComposer {
       append("declare @method: ");
       append(Modifier.toString(methodDetails.getMethodMetadata().getModifier()));
       append(" ");
-      append(methodDetails.getMethodMetadata().getReturnType().getNameIncludingTypeParameters());
+      append(methodDetails.getMethodMetadata().getReturnType()
+          .getNameIncludingTypeParameters(false, resolver));
       append(" ");
       append(introductionTo.getSimpleTypeName());
       append(".");
@@ -600,18 +716,47 @@ public class ItdSourceFileComposer {
     }
 
     // Ordered to ensure consistency of output
-    final SortedSet<JavaType> types = new TreeSet<JavaType>();
-    types.addAll(resolver.getRegisteredImports());
+    final SortedMap<JavaType, Boolean> types = new TreeMap<JavaType, Boolean>();
+    types.putAll(resolver.getRegisteredImports());
     if (!types.isEmpty()) {
-      for (final JavaType importType : types) {
+
+      // First of all include the static imports
+      boolean hasStaticImports = false;
+      for (final Entry<JavaType, Boolean> entry : types.entrySet()) {
+        JavaType importType = entry.getKey();
+        boolean asStatic = entry.getValue();
         if (introductionTo.equals(importType.getEnclosingType())) {
           // We don't "import" types defined within governor, as they
           // already have scope and this causes AJDT warnings (see
           // ROO-1686)
           continue;
         }
-        topOfFile.append("import ").append(importType.getFullyQualifiedTypeName()).append(";")
-            .append(getNewLine());
+        if (asStatic) {
+          topOfFile.append("import static ").append(importType.getFullyQualifiedTypeName())
+              .append(";").append(getNewLine());
+          hasStaticImports = true;
+        }
+      }
+
+      // If some static field has been included, append a new line after the static imports
+      if (hasStaticImports) {
+        topOfFile.append(getNewLine());
+      }
+
+      // After static imports, include the other ones
+      for (final Entry<JavaType, Boolean> entry : types.entrySet()) {
+        JavaType importType = entry.getKey();
+        boolean asStatic = entry.getValue();
+        if (introductionTo.equals(importType.getEnclosingType())) {
+          // We don't "import" types defined within governor, as they
+          // already have scope and this causes AJDT warnings (see
+          // ROO-1686)
+          continue;
+        }
+        if (!asStatic) {
+          topOfFile.append("import ").append(importType.getFullyQualifiedTypeName()).append(";")
+              .append(getNewLine());
+        }
       }
 
       topOfFile.append(getNewLine());
@@ -633,19 +778,91 @@ public class ItdSourceFileComposer {
 
       // ROO-3447: Append comments if exists
       CommentStructure commentStructure = method.getCommentStructure();
-      if (commentStructure != null) {
-        List<AbstractComment> methodComments = commentStructure.getBeginComments();
-        String comment = "";
-        for (AbstractComment methodComment : methodComments) {
-          comment = comment.concat(methodComment.getComment() + "\n");
+      if (commentStructure != null && commentStructure.getBeginComments() != null) {
+        List<AbstractComment> comments = commentStructure.getBeginComments();
+        String commentString = "";
+        boolean missingComponentsAdded = false;
+        for (AbstractComment comment : comments) {
+
+          // Join all JavadocComment's
+          if (comment instanceof JavadocComment) {
+
+            // Add JavaDoc missing components
+            if (!missingComponentsAdded) {
+
+              // Check params info
+              if (!method.getParameterNames().isEmpty()
+                  && ((JavadocComment) comment).getParamsInfo() == null) {
+                List<String> paramsInfo = new ArrayList<String>();
+                for (JavaSymbolName name : method.getParameterNames()) {
+                  paramsInfo.add(name.getSymbolName());
+                }
+                ((JavadocComment) comment).setParamsInfo(paramsInfo);
+              }
+
+              // Check return info
+              if (!method.getReturnType().equals(JavaType.VOID_OBJECT)
+                  && !method.getReturnType().equals(JavaType.VOID_PRIMITIVE)
+                  && ((JavadocComment) comment).getReturnInfo() == null) {
+                ((JavadocComment) comment)
+                    .setReturnInfo(method.getReturnType().getSimpleTypeName());
+              }
+
+              // Check throws info
+              if (!method.getThrowsTypes().isEmpty()
+                  && ((JavadocComment) comment).getThrowsInfo() == null) {
+                List<String> throwsInfo = new ArrayList<String>();
+                for (JavaType throwsType : method.getThrowsTypes()) {
+                  throwsInfo.add(throwsType.getSimpleTypeName());
+                }
+                ((JavadocComment) comment).setThrowsInfo(throwsInfo);
+              }
+              missingComponentsAdded = true;
+            }
+
+            commentString =
+                commentString.concat(comment.getComment()).concat(IOUtils.LINE_SEPARATOR);
+          } else {
+
+            // Not JavadocComment, write comment as it is, unchanged
+            appendFormalLine(comment.getComment());
+          }
         }
 
-        String[] commentLines = comment.split("\n");
-        appendFormalLine("/**");
+        // Write JavadocComment's to ITD, in a single JavadocComment instance
+        String[] commentLines = commentString.split(IOUtils.LINE_SEPARATOR);
         for (String commentLine : commentLines) {
-          appendFormalLine(" * ".concat(commentLine));
+          appendFormalLine(commentLine);
         }
-        appendFormalLine(" */");
+      } else {
+
+        // ROO-3834: Append default Javadoc if not exists a comment structure, 
+        // including params, return and throws
+        CommentStructure defaultCommentStructure = new CommentStructure();
+        List<String> parameterNames = new ArrayList<String>();
+        for (JavaSymbolName name : method.getParameterNames()) {
+          parameterNames.add(name.getSymbolName());
+        }
+        List<String> throwsTypesNames = new ArrayList<String>();
+        for (JavaType type : method.getThrowsTypes()) {
+          throwsTypesNames.add(type.getSimpleTypeName());
+        }
+        String returnInfo = null;
+        JavaType returnType = method.getReturnType();
+        if (!returnType.equals(JavaType.VOID_OBJECT) && !returnType.equals(JavaType.VOID_PRIMITIVE)) {
+          returnInfo = returnType.getSimpleTypeName();
+        }
+        JavadocComment javadocComment =
+            new JavadocComment("TODO Auto-generated method documentation", parameterNames,
+                returnInfo, throwsTypesNames);
+        defaultCommentStructure.addComment(javadocComment, CommentLocation.BEGINNING);
+        method.setCommentStructure(defaultCommentStructure);
+
+        // Now lines should be formatted, so write them
+        String[] comment = javadocComment.getComment().split(IOUtils.LINE_SEPARATOR);
+        for (String line : comment) {
+          appendFormalLine(line);
+        }
       }
 
       // Append annotations
@@ -658,7 +875,9 @@ public class ItdSourceFileComposer {
       // Append "<modifier> <genericDefinition> <returnType> <methodName>" portion
       appendIndent();
       // modifier
-      if (method.getModifier() != 0) {
+      if (method.getModifier() != 0)
+
+      {
         append(Modifier.toString(method.getModifier()));
         append(" ");
       }
@@ -670,8 +889,7 @@ public class ItdSourceFileComposer {
       }
 
       // return type
-      final boolean staticMethod = Modifier.isStatic(method.getModifier());
-      append(method.getReturnType().getNameIncludingTypeParameters(staticMethod, resolver));
+      append(method.getReturnType().getNameIncludingTypeParameters(false, resolver));
       append(" ");
       if (defineTarget) {
         append(introductionTo.getSimpleTypeName());
@@ -714,6 +932,7 @@ public class ItdSourceFileComposer {
 
       if (isInterfaceMethod) {
         append(";");
+        this.newLine(false);
       } else {
         append(" {");
         this.newLine(false);
@@ -727,6 +946,7 @@ public class ItdSourceFileComposer {
       }
       this.newLine();
     }
+
   }
 
   private void writeInnerTypeConstructors(final JavaType innerType,

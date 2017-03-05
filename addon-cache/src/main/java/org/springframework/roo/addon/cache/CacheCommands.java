@@ -93,11 +93,10 @@ public class CacheCommands implements CommandMarker {
    */
   @CliCommand(
       value = "cache setup",
-      help = "Installs support for intermediate memory. Users can specify different providers to use for managing it.")
-  public void cacheSetup(
-      @CliOption(key = "provider", mandatory = false,
-          help = "Parameter that indicates the provider to use for managing intermediate memory.") String provider,
-      ShellContext shellContext) {
+      help = "Installs support for using intermediate memory in generated project by using Spring Cache abstraction. Users can specify different providers to use for managing it.")
+  public void cacheSetup(@CliOption(key = "provider", mandatory = false,
+      help = "Parameter that indicates the provider to use for managing intermediate memory. "
+          + "Possible values are: `GUAVA`.") String provider, ShellContext shellContext) {
 
     // Check for provider value
     CacheProvider selectedCacheProvider = null;

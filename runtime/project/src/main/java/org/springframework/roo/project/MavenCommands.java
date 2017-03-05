@@ -1,15 +1,9 @@
 package org.springframework.roo.project;
 
-import static org.springframework.roo.project.maven.Pom.ROOT_MODULE_SYMBOL;
 import static org.springframework.roo.shell.OptionContexts.UPDATE;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.logging.Logger;
-
-import org.apache.commons.lang3.StringUtils;
 import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.InvalidSyntaxException;
@@ -18,21 +12,27 @@ import org.osgi.service.component.ComponentContext;
 import org.springframework.roo.project.maven.Pom;
 import org.springframework.roo.project.packaging.JarPackaging;
 import org.springframework.roo.project.packaging.PackagingProvider;
+import org.springframework.roo.project.packaging.PackagingProviderRegistry;
 import org.springframework.roo.shell.CliAvailabilityIndicator;
 import org.springframework.roo.shell.CliCommand;
 import org.springframework.roo.shell.CliOption;
 import org.springframework.roo.shell.CliOptionAutocompleteIndicator;
-import org.springframework.roo.shell.CliOptionMandatoryIndicator;
 import org.springframework.roo.shell.CommandMarker;
 import org.springframework.roo.shell.ShellContext;
 import org.springframework.roo.support.logging.HandlerUtils;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.logging.Logger;
 
 
 
 /**
  * Shell commands for {@link MavenOperations} and also to launch native mvn
  * commands.
- * 
+ *
  * @author Ben Alex
  * @since 1.0
  */
@@ -61,12 +61,15 @@ public class MavenCommands implements CommandMarker {
   private MavenOperations mavenOperations;
   private ProjectOperations projectOperations;
 
+  @Reference
+  PackagingProviderRegistry packagingProviderRegistry;
+
   protected void activate(final ComponentContext cContext) {
     context = cContext.getBundleContext();
   }
 
-  @CliCommand(value = DEPENDENCY_ADD_COMMAND,
-      help = "Adds a new dependency to the Maven project object model (POM)")
+  /* @CliCommand(value = DEPENDENCY_ADD_COMMAND,
+       help = "Adds a new dependency to the Maven project object model (POM)") */
   public void addDependency(
       @CliOption(key = "groupId", mandatory = true, help = "The group ID of the dependency") final String groupId,
       @CliOption(key = "artifactId", mandatory = true, help = "The artifact ID of the dependency") final String artifactId,
@@ -78,8 +81,8 @@ public class MavenCommands implements CommandMarker {
         artifactId, version, scope, classifier);
   }
 
-  @CliCommand(value = REPOSITORY_ADD_COMMAND,
-      help = "Adds a new repository to the Maven project object model (POM)")
+  /*  @CliCommand(value = REPOSITORY_ADD_COMMAND,
+        help = "Adds a new repository to the Maven project object model (POM)") */
   public void addRepository(@CliOption(key = "id", mandatory = true,
       help = "The ID of the repository") final String id, @CliOption(key = "name",
       mandatory = false, help = "The name of the repository") final String name, @CliOption(
@@ -89,48 +92,43 @@ public class MavenCommands implements CommandMarker {
         new Repository(id, name, url));
   }
 
-  @CliOptionMandatoryIndicator(params = "parent", command = MODULE_CREATE_COMMAND)
-  public boolean isParentRequired(ShellContext shellContext) {
-
-    // A parent is required is focused module is not POM
-    if (getProjectOperations().getFocusedModule().getPackaging().equals("pom")) {
-      return false;
-    }
-
-    return true;
-  }
-
-  @CliOptionAutocompleteIndicator(command = MODULE_CREATE_COMMAND, param = "parent",
-      help = "--parent parameter must be a POM module")
+  @CliOptionAutocompleteIndicator(command = MODULE_CREATE_COMMAND, param = "packaging",
+      help = "--packaging select one of the available Maven packaging values")
   public List<String> returnPomModules(ShellContext shellContext) {
-
     List<String> allPossibleValues = new ArrayList<String>();
+    Collection<PackagingProvider> allPackagingProviders =
+        packagingProviderRegistry.getAllPackagingProviders();
 
-    for (final Pom module : getProjectOperations().getPoms()) {
-      if (module.getPackaging().equals("pom")) {
-        allPossibleValues
-            .add(StringUtils.defaultIfEmpty(module.getModuleName(), ROOT_MODULE_SYMBOL));
+    for (final PackagingProvider packagingProvider : allPackagingProviders) {
+      // ROO-3801 Can't create POM children
+      if (!"pom".equals(packagingProvider.getId())) {
+        allPossibleValues.add(packagingProvider.getId().toUpperCase());
       }
     }
     return allPossibleValues;
   }
 
-  @CliCommand(value = MODULE_CREATE_COMMAND, help = "Creates a new Maven module")
-  public void createModule(
-      @CliOption(key = "moduleName", mandatory = true, help = "The name of the module") final String moduleName,
-      @CliOption(key = "parent", optionContext = UPDATE, mandatory = true,
-          help = "The parent module name. By default is the current module") final Pom parentPom,
-      @CliOption(key = "packaging", help = "The Maven packaging of this module",
-          unspecifiedDefaultValue = JarPackaging.NAME) final PackagingProvider packaging,
-      @CliOption(key = "artifactId",
-          help = "The artifact ID of this module (defaults to moduleName if not specified)") final String artifactId) {
+  @CliCommand(value = MODULE_CREATE_COMMAND,
+      help = "Creates a new Maven module in current *multimodule* project.")
+  public void createModule(@CliOption(key = "moduleName", mandatory = true,
+      help = "The name of the module to create.") final String moduleName, @CliOption(
+      key = "packaging", help = "The Maven packaging of this module."
+          + "Possible values are: `BUNDLE`, `EAR`, `ESA`, `JAR` and `WAR`."
+          + "Default if option not present: `JAR` (equals to 'jar').",
+      unspecifiedDefaultValue = JarPackaging.NAME) final PackagingProvider packaging, @CliOption(
+      key = "artifactId", help = "The artifact ID of this module."
+          + "Default if option not present: `--moduleName` value.") final String artifactId) {
 
-    getMavenOperations().createModule(parentPom, moduleName, packaging, artifactId);
+    getMavenOperations().createModule(moduleName, packaging, artifactId);
   }
 
-  @CliCommand(value = MODULE_FOCUS_COMMAND, help = "Changes focus to a different project module")
-  public void focusModule(@CliOption(key = "moduleName", mandatory = true, optionContext = UPDATE,
-      help = "The module to focus on") final Pom module) {
+  @CliCommand(value = MODULE_FOCUS_COMMAND,
+      help = "Changes Roo Shell focus to a different project "
+          + "module, when in a multimodule project.")
+  public void focusModule(
+      @CliOption(key = "moduleName", mandatory = true, optionContext = UPDATE,
+          help = "The module name to focus on."
+              + "Possible values are: any of the project module names (`~` for root module).") final Pom module) {
 
     getMavenOperations().setModule(module);
   }
@@ -167,7 +165,7 @@ public class MavenCommands implements CommandMarker {
     return getMavenOperations().isFocusedProjectAvailable();
   }
 
-  @CliCommand(value = {PERFORM_COMMAND_COMMAND}, help = "Executes a user-specified Maven command")
+  /* @CliCommand(value = {PERFORM_COMMAND_COMMAND}, help = "Executes a user-specified Maven command") */
   public void mvn(@CliOption(key = "mavenCommand", mandatory = true,
       help = "User-specified Maven command (eg test:test)") final String command)
       throws IOException {
@@ -175,8 +173,8 @@ public class MavenCommands implements CommandMarker {
     getMavenOperations().executeMvnCommand(command);
   }
 
-  @CliCommand(value = DEPENDENCY_REMOVE_COMMAND,
-      help = "Removes an existing dependency from the Maven project object model (POM)")
+  /*  @CliCommand(value = DEPENDENCY_REMOVE_COMMAND,
+        help = "Removes an existing dependency from the Maven project object model (POM)") */
   public void removeDependency(
       @CliOption(key = "groupId", mandatory = true, help = "The group ID of the dependency") final String groupId,
       @CliOption(key = "artifactId", mandatory = true, help = "The artifact ID of the dependency") final String artifactId,
@@ -188,8 +186,8 @@ public class MavenCommands implements CommandMarker {
         artifactId, version, classifier);
   }
 
-  @CliCommand(value = REPOSITORY_REMOVE_COMMAND,
-      help = "Removes an existing repository from the Maven project object model (POM)")
+  /* @CliCommand(value = REPOSITORY_REMOVE_COMMAND,
+       help = "Removes an existing repository from the Maven project object model (POM)") */
   public void removeRepository(@CliOption(key = "id", mandatory = true,
       help = "The ID of the repository") final String id, @CliOption(key = "url", mandatory = true,
       help = "The URL of the repository") final String url) {
@@ -198,31 +196,31 @@ public class MavenCommands implements CommandMarker {
         new Repository(id, null, url));
   }
 
-  @CliCommand(value = {PERFORM_ASSEMBLY_COMMAND}, help = "Executes the assembly goal via Maven")
+  /* @CliCommand(value = {PERFORM_ASSEMBLY_COMMAND}, help = "Executes the assembly goal via Maven") */
   public void runAssembly() throws IOException {
     mvn("assembly:assembly");
   }
 
-  @CliCommand(value = {PERFORM_CLEAN_COMMAND},
-      help = "Executes a full clean (including Eclipse files) via Maven")
+  /* @CliCommand(value = {PERFORM_CLEAN_COMMAND},
+       help = "Executes a full clean (including Eclipse files) via Maven") */
   public void runClean() throws IOException {
     mvn("clean");
   }
 
-  @CliCommand(
-      value = {PERFORM_ECLIPSE_COMMAND},
-      help = "Sets up Eclipse configuration via Maven (only necessary if you have not installed the m2eclipse plugin in Eclipse)")
+  /* @CliCommand(
+       value = {PERFORM_ECLIPSE_COMMAND},
+       help = "Sets up Eclipse configuration via Maven (only necessary if you have not installed the m2eclipse plugin in Eclipse)") */
   public void runEclipse() throws IOException {
     mvn("eclipse:clean eclipse:eclipse");
   }
 
-  @CliCommand(value = {PERFORM_PACKAGE_COMMAND},
-      help = "Packages the application using Maven, but does not execute any tests")
+  /* @CliCommand(value = {PERFORM_PACKAGE_COMMAND},
+       help = "Packages the application using Maven, but does not execute any tests") */
   public void runPackage() throws IOException {
     mvn("-DskipTests=true package");
   }
 
-  @CliCommand(value = {PERFORM_TESTS_COMMAND}, help = "Executes the tests via Maven")
+  /* @CliCommand(value = {PERFORM_TESTS_COMMAND}, help = "Executes the tests via Maven") */
   public void runTest() throws IOException {
     mvn("test");
   }

@@ -38,6 +38,7 @@ import org.springframework.roo.shell.Converter;
 import org.springframework.roo.shell.ShellContext;
 import org.springframework.roo.support.logging.HandlerUtils;
 
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,7 @@ import java.util.logging.Logger;
 
 /**
  * Commands for the DTO add-on to be used by the ROO shell.
- * 
+ *
  * @author Sergio Clares
  * @since 2.0
  */
@@ -56,21 +57,27 @@ public class DtoCommands implements CommandMarker {
 
   protected final static Logger LOGGER = HandlerUtils.getLogger(FieldCommands.class);
 
-  //------------ OSGi component attributes ----------------
+  // ------------ OSGi component attributes ----------------
   private BundleContext context;
 
   @Reference
   private DtoOperations dtoOperations;
+
   @Reference
   private TypeLocationService typeLocationService;
+
   @Reference
   private ProjectOperations projectOperations;
+
   @Reference
   private PathResolver pathResolver;
+
   @Reference
   private FileManager fileManager;
+
   @Reference
   private LastUsed lastUsed;
+
   @Reference
   private MemberDetailsScanner memberDetailsScanner;
 
@@ -94,20 +101,47 @@ public class DtoCommands implements CommandMarker {
     return dtoOperations.isEntityProjectionPossible();
   }
 
-  @CliCommand(value = "dto", help = "Creates a new DTO class in SRC_MAIN_JAVA")
+  @CliCommand(
+      value = "dto",
+      help = "Creates a new DTO (Data Transfer Object) class in the directory _src/main/java_ of the selected project module (if any) with @RooDTO annotation.")
   public void newDtoClass(
       @CliOption(
           key = "class",
           mandatory = true,
           optionContext = UPDATELAST_PROJECT,
-          help = "Name of the DTO class to create, including package and module (if multimodule project)") final JavaType name,
+          help = "The name of the DTO class to create. If you consider it necessary, "
+              + "you can also specify the package (base package can be specified with `~`). "
+              + "Ex.: `--class ~.domain.MyDto`. You can specify module as well, if necessary. "
+              + "Ex.: `--class model:~.domain.MyDto`. When working with a multi-module project, "
+              + "if module is not specified the class will be created in the module which has the focus.") final JavaType name,
       @CliOption(key = "immutable", mandatory = false, specifiedDefaultValue = "true",
-          unspecifiedDefaultValue = "false", help = "Whether the DTO should be inmutable") final boolean immutable,
-      @CliOption(key = "utilityMethods", mandatory = false, specifiedDefaultValue = "true",
+          unspecifiedDefaultValue = "false", help = "Whether the DTO should be inmutable. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean immutable,
+      @CliOption(
+          key = "utilityMethods",
+          mandatory = false,
+          specifiedDefaultValue = "true",
           unspecifiedDefaultValue = "false",
-          help = "Whether the DTO should implement 'toString', 'hashCode' and 'equals' methods") final boolean utilityMethods,
+          help = "Whether the DTO should implement `toString()`, `hashCode()` and `equals()` methods. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean utilityMethods,
       @CliOption(key = "serializable", mandatory = false, specifiedDefaultValue = "true",
-          unspecifiedDefaultValue = "false", help = "Whether the DTO should implement Serializable") final boolean serializable,
+          unspecifiedDefaultValue = "false",
+          help = "Whether the DTO should implement `java.io.Serializable`. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean serializable,
+      @CliOption(
+          key = "entityFormatExpression",
+          mandatory = false,
+          help = "The SpEL expression used to format the entity when showing it in presentation layer e.g. "
+              + "`{#fieldA} {#fieldB}`. It adds the `value` attribute to `io.springlets.format.EntityFormat` "
+              + "annotation.") String formatExpression,
+      @CliOption(
+          key = "entityFormatMessage",
+          mandatory = false,
+          help = "The message key used to obtain a localized SpEL expression to format the entity when "
+              + "showing it in presentation layer. It adds the `message` attribute to "
+              + "`io.springlets.format.EntityFormat` annotation and creates a message in all message bundles "
+              + "with the provided key. Message value should be  modified by developer. This kind of format "
+              + "has more priority that 'expression' format added with `--entityFormatExpression`.") String formatMessage,
       ShellContext shellContext) {
 
     // Check if DTO already exists
@@ -124,13 +158,14 @@ public class DtoCommands implements CommandMarker {
                   name));
     }
 
-    dtoOperations.createDto(name, immutable, utilityMethods, serializable);
+    dtoOperations.createDto(name, immutable, utilityMethods, serializable, formatExpression,
+        formatMessage);
 
   }
 
   /**
    * Makes 'entity' option mandatory if 'class' has been defined.
-   * 
+   *
    * @param shellContext
    * @return true if 'class' has been defined, false otherwise.
    */
@@ -148,7 +183,7 @@ public class DtoCommands implements CommandMarker {
 
   /**
    * Makes 'fields' option mandatory if 'entity' has been defined.
-   * 
+   *
    * @param shellContext
    * @return true if 'entity' has been defined, false otherwise.
    */
@@ -166,7 +201,7 @@ public class DtoCommands implements CommandMarker {
 
   /**
    * Makes 'all' option visible only if 'class' option is not specified.
-   * 
+   *
    * @param shellContext
    * @return false if 'class' is specified, true otherwise.
    */
@@ -185,7 +220,7 @@ public class DtoCommands implements CommandMarker {
 
   /**
    * Makes 'class' option visible only if 'all' option is not specified.
-   * 
+   *
    * @param shellContext
    * @return false if 'all' is specified, true otherwise.
    */
@@ -204,7 +239,7 @@ public class DtoCommands implements CommandMarker {
 
   /**
    * Makes 'entity' option visible only if 'class' option is already specified.
-   * 
+   *
    * @param shellContext
    * @return true if 'class' is specified, false otherwise.
    */
@@ -223,7 +258,7 @@ public class DtoCommands implements CommandMarker {
 
   /**
    * Makes 'suffix' option visible only if 'all' option is specified.
-   * 
+   *
    * @param shellContext
    * @return true if 'all' is specified, false otherwise.
    */
@@ -242,7 +277,7 @@ public class DtoCommands implements CommandMarker {
 
   /**
    * Makes 'fields' option visible only if 'entity' option is specified.
-   * 
+   *
    * @param shellContext
    * @return true if 'entity' is specified, false otherwise.
    */
@@ -260,8 +295,45 @@ public class DtoCommands implements CommandMarker {
   }
 
   /**
-   * Find entities in project and returns a list with their fully qualified names.
-   * 
+   * Indicator that checks if `--entityFormatExpression` is visible for `entity projection` command.
+   * This option won't be visible if `--entity` has not already been specified.
+   *
+   * @param shellContext
+   * @return `true` if `--entity` option has been specified, `false` otherwise.
+   */
+  @CliOptionVisibilityIndicator(command = "entity projection", params = "entityFormatExpression",
+      help = "Option `--entityFormatExpression` is available only if `--entity` has already "
+          + "been specified.")
+  public boolean isEntityFormatExpressionVisibleForEntityProjection(ShellContext shellContext) {
+    if (shellContext.getParameters().get("entity") != null) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Indicator that checks if `--entityFormatMessage` is visible for `entity projection` command.
+   * This option won't be visible if `--entity` has not already been specified.
+   *
+   * @param shellContext
+   * @return `true` if `--entity` option has been specified, `false` otherwise.
+   */
+  @CliOptionVisibilityIndicator(command = "entity projection", params = "entityFormatMessage",
+      help = "Option `--entityFormatExpression` is available only if `--entity` has already "
+          + "been specified.")
+  public boolean isEntityFormatMessageVisibleForEntityProjection(ShellContext shellContext) {
+    if (shellContext.getParameters().get("entity") != null) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Find entities in project and returns a list with their fully qualified
+   * names.
+   *
    * @param shellContext
    * @return List<String> with available entity full qualified names.
    */
@@ -289,26 +361,253 @@ public class DtoCommands implements CommandMarker {
     return results;
   }
 
-  @CliCommand(value = "entity projection",
-      help = "Creates new projection classes from entities in SRC_MAIN_JAVA")
+  /**
+   * Attempts to obtain entity specified in 'entity' option and returns an
+   * auto-complete list with the entity fields, separated by comma's.
+   * 
+   * @param shellContext
+   * @return a List<String> with the possible values.
+   */
+  @CliOptionAutocompleteIndicator(command = "entity projection", param = "fields",
+      help = "Option fields must have a comma-separated list of valid fields. Please, assign it a "
+          + "correct value. Transient, static and entity collection fields are not valid for "
+          + "projections.", includeSpaceOnFinish = false)
+  public List<String> returnFieldValues(ShellContext shellContext) {
+    List<String> fieldValuesToReturn = new ArrayList<String>();
+
+    // Get entity JavaType
+    JavaType entity = getTypeFromEntityParam(shellContext);
+
+    // Get current fields in --field value
+    String currentFieldValue = shellContext.getParameters().get("fields");
+    String[] fields = StringUtils.split(currentFieldValue, ",");
+
+    // Check for bad written separators and return no options
+    if (currentFieldValue.contains(",.") || currentFieldValue.contains(".,")) {
+      return fieldValuesToReturn;
+    }
+
+    // Check if it is first field
+    if (currentFieldValue.equals("")) {
+      for (FieldMetadata field : getEntityFieldList(entity)) {
+        fieldValuesToReturn.add(field.getFieldName().getSymbolName());
+      }
+      return fieldValuesToReturn;
+    }
+
+    // VALIDATION OF CURRENT SPECIFIED VALUES UNTIL LAST MEMBER
+    JavaType lastRelatedEntity = null;
+    String completedValue = "";
+    List<FieldMetadata> entityFields = null;
+    boolean fieldFound = false;
+    boolean lastFieldIsEntity = false;
+    boolean isMainEntityField = true;
+    for (int i = 0; i < fields.length; i++) {
+
+      JavaType lastFieldType = entity;
+
+      // Split field by ".", in case it was a relation field
+      String[] splittedByPeriod = StringUtils.split(fields[i], ".");
+
+      // Build auto-complete values
+      for (int t = 0; t < splittedByPeriod.length; t++) {
+        fieldFound = false;
+
+        // Find the field in entity fields
+        if (typeLocationService.getTypeDetails(lastFieldType) != null
+            && typeLocationService.getTypeDetails(lastFieldType).getAnnotation(
+                RooJavaType.ROO_JPA_ENTITY) != null) {
+          entityFields = getEntityFieldList(lastFieldType);
+        }
+
+        for (FieldMetadata entityField : entityFields) {
+          lastFieldIsEntity = false;
+          if (splittedByPeriod[t].equals(entityField.getFieldName().getSymbolName())) {
+
+            // Add auto-complete value
+            if (completedValue.equals("")) {
+              completedValue = entityField.getFieldName().getSymbolName();
+            } else {
+              if (splittedByPeriod.length > 1 && t > 0) {
+
+                // Field is from a relation
+                completedValue =
+                    completedValue.concat(".").concat(entityField.getFieldName().getSymbolName());
+              } else {
+
+                // Field is a simple field
+                completedValue =
+                    completedValue.concat(",").concat(entityField.getFieldName().getSymbolName());
+              }
+            }
+
+            // Record last field JavaType for auto-completing last value
+            lastFieldType = entityField.getFieldType();
+
+            // Check if field is an entity different from original entity
+            if (typeLocationService.getTypeDetails(lastFieldType) != null
+                && typeLocationService.getTypeDetails(lastFieldType).getAnnotation(
+                    RooJavaType.ROO_JPA_ENTITY) != null
+                && !entityField.getFieldType().equals(entity)) {
+              lastFieldIsEntity = true;
+              lastRelatedEntity = lastFieldType;
+            }
+
+            fieldFound = true;
+            break;
+          }
+        }
+
+        // Checks if field to autocomplete is from main entity
+        if (currentFieldValue.endsWith(".") || (splittedByPeriod.length > 1 && !fieldFound)) {
+          isMainEntityField = false;
+        }
+      }
+    }
+
+    // ADDITION OF NEW VALUES
+
+    // Add field separator if needed
+    if (fieldFound) {
+
+      // Always add current value for validation only
+      fieldValuesToReturn.add(completedValue);
+
+      // If field is entity, append , and . and return values
+      if (lastFieldIsEntity) {
+        fieldValuesToReturn.add(completedValue.concat(","));
+        fieldValuesToReturn.add(completedValue.concat("."));
+
+        if (!currentFieldValue.endsWith(",") && !currentFieldValue.endsWith(".")) {
+          return fieldValuesToReturn;
+        }
+      }
+    }
+
+    // Build auto-complete values for last member
+    String autocompleteValue = "";
+    if (isMainEntityField) {
+
+      // Complete simple fields. Add entity fields as auto-complete values
+      List<FieldMetadata> mainEntityFields = getEntityFieldList(entity);
+      for (FieldMetadata mainEntityField : mainEntityFields) {
+
+        if (completedValue.equals("")) {
+
+          // Is first field to complete
+          fieldValuesToReturn.add(mainEntityField.getFieldName().getSymbolName());
+        } else if (!completedValue.equals("")) {
+
+          // Check if field is specified and add it if not
+          boolean alreadySpecified = false;
+          // boolean relationField = false;
+          for (int i = 0; i < fields.length; i++) {
+            if (mainEntityField.getFieldName().getSymbolName().equals(fields[i])) {
+              alreadySpecified = true;
+            }
+          }
+          if (!alreadySpecified) {
+
+            // Add completion
+            autocompleteValue =
+                completedValue.concat(",").concat(mainEntityField.getFieldName().getSymbolName());
+          } else if (alreadySpecified && typeIsEntity(mainEntityField.getFieldType())) {
+
+            // Add completion as relation field
+            autocompleteValue =
+                completedValue.concat(",").concat(mainEntityField.getFieldName().getSymbolName())
+                    .concat(".");
+          }
+
+          // Add completion
+          fieldValuesToReturn.add(autocompleteValue);
+        }
+      }
+    } else if (lastRelatedEntity != null) {
+
+      // Complete with fields of current relation field
+      List<FieldMetadata> relatedEntityFields = getEntityFieldList(lastRelatedEntity);
+      for (FieldMetadata relatedEntityField : relatedEntityFields) {
+        autocompleteValue =
+            completedValue.concat(".").concat(relatedEntityField.getFieldName().getSymbolName());
+
+        // Check if value already exists
+        String additionalValueToAdd = StringUtils.substringAfterLast(autocompleteValue, ",");
+        if (!fieldValuesToReturn.contains(autocompleteValue)
+            && !currentFieldValue.contains(additionalValueToAdd)) {
+          fieldValuesToReturn.add(autocompleteValue);
+        } else if (!fieldValuesToReturn.contains(autocompleteValue)
+            && typeIsEntity(relatedEntityField.getFieldType())) {
+          fieldValuesToReturn.add(autocompleteValue);
+        } else if (additionalValueToAdd.equals("")) {
+          fieldValuesToReturn.add(autocompleteValue);
+        }
+      }
+    }
+
+    return fieldValuesToReturn;
+  }
+
+  @CliCommand(
+      value = "entity projection",
+      help = "Creates new projection classes from entities in the directory _src/main/java_ of the "
+          + "selected project module (if any) annotated with `@RooEntityProjection`. Transient, "
+          + "static and entity collection fields are not valid for projections.")
   public void newProjectionClass(
-      @CliOption(key = "entity", mandatory = true,
-          help = "Name of the entity which can be used to create the Projection from") final JavaType entity,
+      @CliOption(
+          key = "all",
+          mandatory = false,
+          specifiedDefaultValue = "true",
+          unspecifiedDefaultValue = "false",
+          help = "Create one projection class for each entity in the project."
+              + "This option is mandatory if `--class` is not specified. Otherwise, using `--class` will cause the parameter `--all` won't be available.") final boolean all,
       @CliOption(
           key = "class",
           mandatory = false,
           optionContext = UPDATELAST_PROJECT,
-          help = "Name of the Projection class to create, including package and module (if multimodule project)") final JavaType name,
-      @CliOption(key = "all", mandatory = false, specifiedDefaultValue = "true",
-          unspecifiedDefaultValue = "false",
-          help = "Whether should create one Projection per each entity in the project") final boolean all,
-      @CliOption(key = "fields", mandatory = true,
-          help = "Comma separated list of entity fields to be included into the Projection") final String fields,
+          help = "The name of the projection class to create. If you consider it necessary, "
+              + "you can also specify the package (base package can be specified with `~`). "
+              + "Ex.: `--class ~.domain.MyProjection`. You can specify module as well, if necessary. "
+              + "Ex.: `--class model:~.domain.MyProjection`. When working with a multi-module "
+              + "project, if module is not specified the projection will be created in the module "
+              + "which has the focus. "
+              + "This option is mandatory if `--all` is not specified. Otherwise, using `--all` will "
+              + "cause the parameter `--class` won't be available.") final JavaType name,
+      @CliOption(
+          key = "entity",
+          mandatory = true,
+          help = "Name of the entity which can be used to create the Projection from. "
+              + "This option is mandatory if `--class` is specified. Otherwise, not specifying `--class` will cause the parameter `--entity` won't be available.") final JavaType entity,
+      @CliOption(
+          key = "fields",
+          mandatory = true,
+          help = "Comma separated list of entity fields to be included into the Projection. "
+              + "Possible values are: non-static, nor transient, nor entity collection fields from "
+              + "main entity or its related entities (only for one-to-one or many-to-one relations). "
+              + "This option is mandatory if `--class` is specified. Otherwise, not specifying "
+              + "`--class` will cause the parameter `--fields` won't be available.") final String fields,
       @CliOption(
           key = "suffix",
           mandatory = false,
           unspecifiedDefaultValue = "Projection",
-          help = "Suffix added to each Projection class name, builded from each associated entity name.") final String suffix,
+          help = "Suffix added to each Projection class name, built from each associated entity name. "
+              + "This option is only available if `--all` has been already specified. "
+              + "Default if option not present: 'Projection'.") final String suffix,
+      @CliOption(
+          key = "entityFormatExpression",
+          mandatory = false,
+          help = "The SpEL expression used to format the entity when showing it in presentation layer e.g. "
+              + "{#fieldA} {#fieldB}. It adds the `value` attribute to `io.springlets.format.EntityFormat` "
+              + "annotation. " + "This option is available only if `--entity` has been specified.") String formatExpression,
+      @CliOption(
+          key = "entityFormatMessage",
+          mandatory = false,
+          help = "The message key used to obtain a localized SpEL expression to format the entity when "
+              + "showing it in presentation layer. It adds the `message` attribute to "
+              + "`io.springlets.format.EntityFormat` annotation and creates a message in all message bundles "
+              + "with the provided key. Message value should be  modified by developer. This kind of format "
+              + "has more priority that 'expression' format added with `--entityFormatExpression`. "
+              + "This option is available only if `--entity` has been specified.") String formatMessage,
       ShellContext shellContext) {
 
     // Check if Projection already exists
@@ -337,15 +636,16 @@ public class DtoCommands implements CommandMarker {
     }
 
     if (entity != null) {
-      dtoOperations.createProjection(entity, name, fields, null);
+      dtoOperations.createProjection(entity, name, fields, null, formatExpression, formatMessage);
     } else if (all == true) {
       dtoOperations.createAllProjections(suffix, shellContext);
     }
   }
 
   /**
-   * Replaces a JavaType fullyQualifiedName for a shorter name using '~' for TopLevelPackage
-   * 
+   * Replaces a JavaType fullyQualifiedName for a shorter name using '~' for
+   * TopLevelPackage
+   *
    * @param cid ClassOrInterfaceTypeDetails of a JavaType
    * @param currentText String current text for option value
    * @return the String representing a JavaType with its name shortened
@@ -388,7 +688,7 @@ public class DtoCommands implements CommandMarker {
     if ((StringUtils.isBlank(currentText) || auxString.startsWith(currentText))
         && StringUtils.contains(javaTypeFullyQualilfiedName, topLevelPackageString)) {
 
-      // Value is for autocomplete only or user wrote abbreviate value  
+      // Value is for autocomplete only or user wrote abbreviate value
       javaTypeString = auxString;
     } else {
 
@@ -400,8 +700,9 @@ public class DtoCommands implements CommandMarker {
   }
 
   /**
-   * Gets a list of fields from an entity.
-   * 
+   * Gets a list of fields from an entity. Static and transient fields are excluded
+   * as well as collection fields which type is an entity.
+   *
    * @param entity the JavaType from which to obtain the field list.
    * @return a List<FieldMetadata> with info of the entity fields.
    */
@@ -421,6 +722,34 @@ public class DtoCommands implements CommandMarker {
     // Get fields and check for other fields from relations
     List<FieldMetadata> entityFields = entityMemberDetails.getFields();
     for (FieldMetadata field : entityFields) {
+
+      // Exclude static fields
+      if (Modifier.isStatic(field.getModifier())) {
+        continue;
+      }
+
+      // Exclude transient fields
+      if (field.getAnnotation(JpaJavaType.TRANSIENT) != null) {
+        continue;
+      }
+
+      // Exclude entity collection fields
+      JavaType fieldType = field.getFieldType();
+      if (fieldType.isCommonCollectionType()) {
+        boolean isEntityCollectionField = false;
+        List<JavaType> parameters = fieldType.getParameters();
+        for (JavaType parameter : parameters) {
+          if (typeIsEntity(parameter)) {
+            isEntityCollectionField = true;
+            break;
+          }
+        }
+
+        if (isEntityCollectionField) {
+          continue;
+        }
+      }
+
       fieldList.add(field);
     }
 
@@ -428,12 +757,12 @@ public class DtoCommands implements CommandMarker {
   }
 
   /**
-   * Tries to obtain JavaType indicated in command or which has the focus 
-   * in the Shell
-   * 
+   * Tries to obtain JavaType indicated in command or which has the focus in the
+   * Shell
+   *
    * @param shellContext the Roo Shell context
-   * @return JavaType or null if no class has the focus or no class is 
-   * specified in the command
+   * @return JavaType or null if no class has the focus or no class is specified
+   *         in the command
    */
   private JavaType getTypeFromEntityParam(ShellContext shellContext) {
     // Try to get 'class' from ShellContext
@@ -451,6 +780,11 @@ public class DtoCommands implements CommandMarker {
             + "param '--entity' is specified with a right value.");
 
     return type;
+  }
+
+  private boolean typeIsEntity(JavaType type) {
+    return typeLocationService.getTypeDetails(type) != null
+        && typeLocationService.getTypeDetails(type).getAnnotation(RooJavaType.ROO_JPA_ENTITY) != null;
   }
 
   @SuppressWarnings("unchecked")

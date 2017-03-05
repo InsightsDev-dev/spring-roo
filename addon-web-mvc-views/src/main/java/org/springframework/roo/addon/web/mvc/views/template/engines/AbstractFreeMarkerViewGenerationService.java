@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -16,9 +15,9 @@ import org.apache.commons.lang3.Validate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.springframework.roo.addon.web.mvc.views.AbstractViewGenerationService;
+import org.springframework.roo.addon.web.mvc.views.AbstractViewMetadata;
 import org.springframework.roo.addon.web.mvc.views.ViewContext;
 import org.springframework.roo.addon.web.mvc.views.components.FieldItem;
-import org.springframework.roo.classpath.details.FieldMetadata;
 import org.springframework.roo.process.manager.FileManager;
 import org.springframework.roo.support.osgi.OSGiUtils;
 import org.springframework.roo.support.util.FileUtils;
@@ -29,8 +28,8 @@ import freemarker.template.TemplateExceptionHandler;
 import freemarker.template.Version;
 
 @Component(componentAbstract = true)
-public abstract class AbstractFreeMarkerViewGenerationService<DOC> extends
-    AbstractViewGenerationService<DOC> {
+public abstract class AbstractFreeMarkerViewGenerationService<DOC, T extends AbstractViewMetadata>
+    extends AbstractViewGenerationService<DOC, T> {
 
   @Reference
   FileManager fileManager;
@@ -42,7 +41,7 @@ public abstract class AbstractFreeMarkerViewGenerationService<DOC> extends
     return fileManager.exists(location.concat("/").concat(templateName).concat(".ftl"));
   }
 
-  protected DOC process(String templateName, ViewContext ctx) {
+  protected DOC process(String templateName, ViewContext<T> ctx) {
     String content = "";
 
     try {
@@ -81,6 +80,9 @@ public abstract class AbstractFreeMarkerViewGenerationService<DOC> extends
       input.put("modelAttribute", String.format("${%s}", ctx.getModelAttribute()));
       input.put("modelAttributeName", ctx.getModelAttributeName());
 
+      // Getting security information from ViewContext
+      input.put("isSecurityEnabled", ctx.isSecurityEnabled());
+
       // Add all extra elements from ViewContext. This is useful if some
       // implementation wants to include its own information
       for (Entry<String, Object> extraInformation : ctx.getExtraInformation().entrySet()) {
@@ -114,7 +116,7 @@ public abstract class AbstractFreeMarkerViewGenerationService<DOC> extends
   /**
    * This method will copy the contents of a directory to another if the
    * resource does not already exist in the target directory
-   * 
+   *
    * @param sourceAntPath the source path
    * @param targetDirectory the target directory
    */

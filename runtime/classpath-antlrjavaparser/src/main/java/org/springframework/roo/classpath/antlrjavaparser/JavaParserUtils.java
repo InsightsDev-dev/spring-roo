@@ -23,10 +23,12 @@ import com.github.antlrjavaparser.api.body.ClassOrInterfaceDeclaration;
 import com.github.antlrjavaparser.api.body.ModifierSet;
 import com.github.antlrjavaparser.api.body.TypeDeclaration;
 import com.github.antlrjavaparser.api.expr.AnnotationExpr;
+import com.github.antlrjavaparser.api.expr.ArrayInitializerExpr;
 import com.github.antlrjavaparser.api.expr.ClassExpr;
 import com.github.antlrjavaparser.api.expr.Expression;
 import com.github.antlrjavaparser.api.expr.FieldAccessExpr;
 import com.github.antlrjavaparser.api.expr.MarkerAnnotationExpr;
+import com.github.antlrjavaparser.api.expr.MemberValuePair;
 import com.github.antlrjavaparser.api.expr.NameExpr;
 import com.github.antlrjavaparser.api.expr.NormalAnnotationExpr;
 import com.github.antlrjavaparser.api.expr.QualifiedNameExpr;
@@ -257,7 +259,7 @@ public final class JavaParserUtils {
 
     if ("?".equals(nameToFind.getName())) {
       return new JavaType(OBJECT.getFullyQualifiedTypeName(), 0, DataType.TYPE,
-          JavaType.WILDCARD_NEITHER, null);
+          JavaType.WILDCARD_NEITHER_ARG, null);
     }
 
     // Unqualified name detected, so check if it's in the type parameter
@@ -372,16 +374,17 @@ public final class JavaParserUtils {
         final ClassOrInterfaceType cit = (ClassOrInterfaceType) rt.getType();
         final JavaType effectiveType = getJavaTypeNow(compilationUnitServices, cit, typeParameters);
         return new JavaType(effectiveType.getFullyQualifiedTypeName(), rt.getArrayCount(),
-            effectiveType.getDataType(), JavaType.WILDCARD_SUPER, effectiveType.getParameters());
+            effectiveType.getDataType(), JavaType.WILDCARD_SUPER_ARG, effectiveType.getParameters());
       } else if (wt.getExtends() != null) {
         final ReferenceType rt = wt.getExtends();
         final ClassOrInterfaceType cit = (ClassOrInterfaceType) rt.getType();
         final JavaType effectiveType = getJavaTypeNow(compilationUnitServices, cit, typeParameters);
         return new JavaType(effectiveType.getFullyQualifiedTypeName(), rt.getArrayCount(),
-            effectiveType.getDataType(), JavaType.WILDCARD_EXTENDS, effectiveType.getParameters());
+            effectiveType.getDataType(), JavaType.WILDCARD_EXTENDS_ARG,
+            effectiveType.getParameters());
       } else {
         return new JavaType(OBJECT.getFullyQualifiedTypeName(), 0, DataType.TYPE,
-            JavaType.WILDCARD_NEITHER, null);
+            JavaType.WILDCARD_NEITHER_ARG, null);
       }
     }
 
@@ -727,6 +730,28 @@ public final class JavaParserUtils {
         final NameExpr nameToUse = importTypeIfRequired(targetType, imports, javaType);
         if (!(nameToUse instanceof QualifiedNameExpr)) {
           return new ClassExpr(new ClassOrInterfaceType(javaType.getSimpleTypeName()));
+        }
+      }
+    } else if (value instanceof ArrayInitializerExpr) {
+      List<Expression> values = ((ArrayInitializerExpr) value).getValues();
+      for (Expression expressionValue : values) {
+        // TODO: Other kind of arrays should be checked too
+
+        // Check annotation expression
+        if (expressionValue instanceof NormalAnnotationExpr) {
+          Validate
+              .isInstanceOf(
+                  NormalAnnotationExpr.class,
+                  expressionValue,
+                  "Attempting to add >1 annotation member-value pair requires an existing normal annotation expression");
+          final List<MemberValuePair> annotationPairs =
+              ((NormalAnnotationExpr) expressionValue).getPairs();
+          for (final MemberValuePair pair : annotationPairs) {
+            final Expression toUse =
+                JavaParserUtils.importExpressionIfRequired(targetType, imports, pair.getValue());
+            pair.setValue(toUse);
+          }
+
         }
       }
     }

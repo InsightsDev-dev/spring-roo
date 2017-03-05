@@ -1,31 +1,35 @@
 package org.springframework.roo.addon.layers.repository.jpa.addon;
 
+import static java.lang.reflect.Modifier.PUBLIC;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.Validate;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Service;
 import org.osgi.framework.BundleContext;
-import org.osgi.framework.InvalidSyntaxException;
-import org.osgi.framework.ServiceReference;
 import org.osgi.service.component.ComponentContext;
 import org.springframework.roo.addon.jpa.addon.JpaOperations;
-import org.springframework.roo.addon.jpa.addon.JpaOperationsImpl;
+import org.springframework.roo.addon.jpa.addon.entity.JpaEntityMetadata.RelationInfo;
 import org.springframework.roo.classpath.PhysicalTypeCategory;
 import org.springframework.roo.classpath.PhysicalTypeIdentifier;
 import org.springframework.roo.classpath.TypeLocationService;
 import org.springframework.roo.classpath.TypeManagementService;
 import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetails;
 import org.springframework.roo.classpath.details.ClassOrInterfaceTypeDetailsBuilder;
+import org.springframework.roo.classpath.details.FieldMetadata;
 import org.springframework.roo.classpath.details.annotations.AnnotationAttributeValue;
 import org.springframework.roo.classpath.details.annotations.AnnotationMetadata;
 import org.springframework.roo.classpath.details.annotations.AnnotationMetadataBuilder;
 import org.springframework.roo.classpath.details.annotations.ClassAttributeValue;
+import org.springframework.roo.classpath.operations.Cardinality;
 import org.springframework.roo.classpath.scanner.MemberDetailsScanner;
 import org.springframework.roo.metadata.MetadataService;
 import org.springframework.roo.model.JavaPackage;
 import org.springframework.roo.model.JavaSymbolName;
 import org.springframework.roo.model.JavaType;
 import org.springframework.roo.model.RooJavaType;
+import org.springframework.roo.model.SpringJavaType;
 import org.springframework.roo.process.manager.FileManager;
 import org.springframework.roo.project.Dependency;
 import org.springframework.roo.project.FeatureNames;
@@ -34,7 +38,9 @@ import org.springframework.roo.project.PathResolver;
 import org.springframework.roo.project.Plugin;
 import org.springframework.roo.project.ProjectOperations;
 import org.springframework.roo.project.Repository;
+import org.springframework.roo.project.maven.Pom;
 import org.springframework.roo.support.logging.HandlerUtils;
+import org.springframework.roo.support.osgi.ServiceInstaceManager;
 import org.springframework.roo.support.util.FileUtils;
 import org.springframework.roo.support.util.XmlUtils;
 import org.w3c.dom.Element;
@@ -51,9 +57,11 @@ import java.util.logging.Logger;
 
 /**
  * The {@link RepositoryJpaOperations} implementation.
- * 
+ *
  * @author Stefan Schmidt
  * @author Juan Carlos García
+ * @author Sergio Clares
+ * @author Jose Manuel Vivó
  * @since 1.2.0
  */
 @Component
@@ -65,17 +73,11 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
   // ------------ OSGi component attributes ----------------
   private BundleContext context;
 
-  private FileManager fileManager;
-  private PathResolver pathResolver;
-  private ProjectOperations projectOperations;
-  private TypeManagementService typeManagementService;
-  private TypeLocationService typeLocationService;
-  private MemberDetailsScanner memberDetailsScanner;
-  private MetadataService metadataService;
-  private JpaOperationsImpl jpaOperations;
+  private ServiceInstaceManager serviceInstaceManager = new ServiceInstaceManager();
 
   protected void activate(final ComponentContext context) {
     this.context = context.getBundleContext();
+    serviceInstaceManager.activate(this.context);
   }
 
   @Override
@@ -94,23 +96,25 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
       ClassOrInterfaceTypeDetails entity = it.next();
 
       // Ignore abstract classes
-      if (!entity.isAbstract()) {
-        // Generating new interface type using entity
-        JavaType interfaceType =
-            new JavaType(repositoriesPackage.getFullyQualifiedPackageName().concat(".")
-                .concat(entity.getType().getSimpleTypeName()).concat("Repository"),
-                repositoriesPackage.getModule());
-
-        // Delegate on simple add repository method
-        addRepository(interfaceType, entity.getType(), null);
+      if (entity.isAbstract()) {
+        continue;
       }
+
+      // Generating new interface type using entity
+      JavaType interfaceType =
+          new JavaType(repositoriesPackage.getFullyQualifiedPackageName().concat(".")
+              .concat(entity.getType().getSimpleTypeName()).concat("Repository"),
+              repositoriesPackage.getModule());
+
+      // Delegate on simple add repository method
+      addRepository(interfaceType, entity.getType(), null, false);
     }
 
   }
 
   @Override
   public void addRepository(JavaType interfaceType, final JavaType domainType,
-      JavaType defaultReturnType) {
+      JavaType defaultReturnType, boolean failOnComposition) {
     Validate.notNull(domainType, "ERROR: You must specify a valid Entity. ");
 
     if (getProjectOperations().isMultimoduleProject()) {
@@ -120,8 +124,8 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
           "ERROR: interfaceType module is required on multimodule projects.");
     } else if (interfaceType == null) {
       interfaceType =
-          new JavaType(String.format("%s.%sRepository", domainType.getPackage(),
-              domainType.getSimpleTypeName()), "");
+          new JavaType(String.format("%s.repository.%sRepository", getProjectOperations()
+              .getFocusedTopLevelPackage(), domainType.getSimpleTypeName()), "");
     }
 
     // Check if entity provided type is annotated with @RooJpaEntity
@@ -133,6 +137,16 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
     Validate.notNull(entityAnnotation,
         "ERROR: Provided entity should be annotated with @RooJpaEntity");
 
+    if (!shouldGenerateRepository(entityDetails)) {
+      if (failOnComposition) {
+        throw new IllegalArgumentException(
+            "%s is child part of a composition relation. Can't create repository (entity should be handle in parent part)");
+      } else {
+        // Nothing to do: silently exit
+        return;
+      }
+    }
+
     if (defaultReturnType != null) {
 
       ClassOrInterfaceTypeDetails defaultReturnTypeDetails =
@@ -143,9 +157,7 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
       // Show an error indicating that defaultReturnType should be annotated with
       // @RooEntityProjection
       Validate.notNull(defaultReturnTypeAnnotation,
-          "ERROR: Provided defaultSearchResult should be annotated with @RooDTO");
-    } else {
-      defaultReturnType = domainType;
+          "ERROR: Provided defaultReturnType should be annotated with @RooEntityProjection");
     }
 
     // Check if the new interface to be created already exists
@@ -183,30 +195,179 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
       }
     }
 
+    // Add Springlets base repository class
+    addRepositoryConfigurationClass();
+
     // Check if current entity is defined as "readOnly".
     AnnotationAttributeValue<Boolean> readOnlyAttr =
         entityDetails.getAnnotation(RooJavaType.ROO_JPA_ENTITY).getAttribute("readOnly");
 
     boolean readOnly = readOnlyAttr != null && readOnlyAttr.getValue() ? true : false;
 
-    // If is readOnly entity, generates common ReadOnlyRepository interface
     if (readOnly) {
+      // If is readOnly entity, generates common ReadOnlyRepository interface
       generateReadOnlyRepository(interfaceType.getPackage());
     }
 
     // Generates repository interface
-    addRepositoryInterface(interfaceType, domainType, entityDetails, interfaceIdentifier);
+    addRepositoryInterface(interfaceType, domainType, entityDetails, interfaceIdentifier,
+        defaultReturnType);
 
     // By default, generate RepositoryCustom interface and its
     // implementation that allow developers to include its dynamic queries
     // using QueryDSL
-    addRepositoryCustom(domainType, interfaceType, interfaceType.getPackage(), defaultReturnType);
+    addRepositoryCustom(domainType, interfaceType, interfaceType.getPackage());
 
     // Add dependencies between modules
     getProjectOperations().addModuleDependency(interfaceType.getModule(), domainType.getModule());
 
     // Add dependencies and plugins
     generateConfiguration(interfaceType, domainType);
+
+  }
+
+  /**
+   * Checks for all the application modules in project and adds a repository 
+   * configuration class, which uses the Springlets base repository class if 
+   * none is already specified.
+   *  
+   */
+  private void addRepositoryConfigurationClass() {
+    Set<ClassOrInterfaceTypeDetails> applicationCids =
+        getTypeLocationService().findClassesOrInterfaceDetailsWithAnnotation(
+            SpringJavaType.SPRING_BOOT_APPLICATION);
+    for (ClassOrInterfaceTypeDetails applicationCid : applicationCids) {
+
+      // Obtain main application config class and its module
+      Pom module =
+          getProjectOperations().getPomFromModuleName(applicationCid.getType().getModule());
+
+      // Create or update SpringDataJpaDetachableRepositoryConfiguration
+      JavaType repositoryConfigurationClass =
+          new JavaType(String.format("%s.config.SpringDataJpaDetachableRepositoryConfiguration",
+              getTypeLocationService().getTopLevelPackageForModule(module)), module.getModuleName());
+
+      Validate.notNull(repositoryConfigurationClass.getModule(),
+          "ERROR: Module name is required to generate a valid JavaType");
+
+      // Checks if new service interface already exists.
+      final String repositoryConfigurationClassIdentifier =
+          getPathResolver().getCanonicalPath(repositoryConfigurationClass.getModule(),
+              Path.SRC_MAIN_JAVA, repositoryConfigurationClass);
+      final String mid =
+          PhysicalTypeIdentifier.createIdentifier(repositoryConfigurationClass, getPathResolver()
+              .getPath(repositoryConfigurationClassIdentifier));
+      if (!getFileManager().exists(repositoryConfigurationClassIdentifier)) {
+
+        // Repository config class doesn't exist. Create class builder
+        final ClassOrInterfaceTypeDetailsBuilder typeBuilder =
+            new ClassOrInterfaceTypeDetailsBuilder(mid, PUBLIC, repositoryConfigurationClass,
+                PhysicalTypeCategory.CLASS);
+
+        // Add @RooJpaRepositoryConfiguration
+        AnnotationMetadataBuilder repositoryCondigurationAnnotation =
+            new AnnotationMetadataBuilder(RooJavaType.ROO_JPA_REPOSITORY_CONFIGURATION);
+        typeBuilder.addAnnotation(repositoryCondigurationAnnotation);
+
+        // Write new class disk
+        getTypeManagementService().createOrUpdateTypeOnDisk(typeBuilder.build());
+      }
+    }
+  }
+
+  /**
+   * Method that generates RepositoryCustom interface and its implementation
+   * for an specific entity
+   *
+   * @param domainType
+   * @param repositoryType
+   * @param repositoryPackage
+   * @param defaultReturnType
+   *
+   * @return JavaType with new RepositoryCustom interface.
+   */
+  private JavaType addRepositoryCustom(JavaType domainType, JavaType repositoryType,
+      JavaPackage repositoryPackage) {
+
+    // Getting RepositoryCustom interface JavaTYpe
+    JavaType interfaceType =
+        new JavaType(repositoryPackage.getFullyQualifiedPackageName().concat(".")
+            .concat(repositoryType.getSimpleTypeName()).concat("Custom"),
+            repositoryType.getModule());
+
+    // Check if new interface exists yet
+    final String interfaceIdentifier =
+        getPathResolver().getCanonicalPath(interfaceType.getModule(), Path.SRC_MAIN_JAVA,
+            interfaceType);
+
+    if (getFileManager().exists(interfaceIdentifier)) {
+      // Type already exists - return
+      return interfaceType;
+    }
+
+    final String interfaceMdId =
+        PhysicalTypeIdentifier.createIdentifier(interfaceType,
+            getPathResolver().getPath(interfaceIdentifier));
+    final ClassOrInterfaceTypeDetailsBuilder interfaceBuilder =
+        new ClassOrInterfaceTypeDetailsBuilder(interfaceMdId, Modifier.PUBLIC, interfaceType,
+            PhysicalTypeCategory.INTERFACE);
+
+    // Generates @RooJpaRepositoryCustom annotation with referenced entity value
+    final AnnotationMetadataBuilder repositoryCustomAnnotationMetadata =
+        new AnnotationMetadataBuilder(RooJavaType.ROO_REPOSITORY_JPA_CUSTOM);
+    repositoryCustomAnnotationMetadata.addAttribute(new ClassAttributeValue(new JavaSymbolName(
+        "entity"), domainType));
+
+    interfaceBuilder.addAnnotation(repositoryCustomAnnotationMetadata);
+
+    // Save RepositoryCustom interface and its implementation on disk
+    getTypeManagementService().createOrUpdateTypeOnDisk(interfaceBuilder.build());
+
+    generateRepositoryCustomImpl(interfaceType, repositoryType, domainType);
+
+    return interfaceType;
+
+  }
+
+  /**
+   * Method that generates the repository interface. This method takes in mind
+   * if entity is defined as readOnly or not.
+   *
+   * @param interfaceType
+   * @param domainType
+   * @param entityDetails
+   * @param interfaceIdentifier
+   */
+  private void addRepositoryInterface(JavaType interfaceType, JavaType domainType,
+      ClassOrInterfaceTypeDetails entityDetails, String interfaceIdentifier,
+      JavaType defaultReturnType) {
+    // Generates @RooJpaRepository annotation with referenced entity value
+    // and repository custom associated to this repository
+    final AnnotationMetadataBuilder interfaceAnnotationMetadata =
+        new AnnotationMetadataBuilder(RooJavaType.ROO_REPOSITORY_JPA);
+    interfaceAnnotationMetadata.addAttribute(new ClassAttributeValue(new JavaSymbolName("entity"),
+        domainType));
+    if (defaultReturnType != null) {
+      interfaceAnnotationMetadata.addAttribute(new ClassAttributeValue(new JavaSymbolName(
+          "defaultReturnType"), defaultReturnType));
+
+      // Add dependencies between modules
+      getProjectOperations().addModuleDependency(interfaceType.getModule(),
+          defaultReturnType.getModule());
+    }
+    // Generating interface
+    final String interfaceMdId =
+        PhysicalTypeIdentifier.createIdentifier(interfaceType,
+            getPathResolver().getPath(interfaceIdentifier));
+    final ClassOrInterfaceTypeDetailsBuilder cidBuilder =
+        new ClassOrInterfaceTypeDetailsBuilder(interfaceMdId, Modifier.PUBLIC, interfaceType,
+            PhysicalTypeCategory.INTERFACE);
+
+    // Annotate repository interface
+    cidBuilder.addAnnotation(interfaceAnnotationMetadata.build());
+
+    // Save new repository on disk
+    getTypeManagementService().createOrUpdateTypeOnDisk(cidBuilder.build());
 
   }
 
@@ -226,8 +387,7 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
       plugins = XmlUtils.findElements("/configuration/multimodule/plugins/plugin", configuration);
 
       // Add database test dependency
-      getJpaOperationsImpl().addDatabaseDependencyWithTestScope(interfaceType.getModule(), null,
-          null);
+      getJpaOperations().addDatabaseDependencyWithTestScope(interfaceType.getModule(), null, null);
 
     } else {
       dependencies =
@@ -299,43 +459,10 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
   }
 
   /**
-   * Method that generates the repository interface. This method takes in mind
-   * if entity is defined as readOnly or not.
-   * 
-   * @param interfaceType
-   * @param domainType
-   * @param entityDetails
-   * @param interfaceIdentifier
-   */
-  private void addRepositoryInterface(JavaType interfaceType, JavaType domainType,
-      ClassOrInterfaceTypeDetails entityDetails, String interfaceIdentifier) {
-    // Generates @RooJpaRepository annotation with referenced entity value
-    // and repository custom associated to this repository
-    final AnnotationMetadataBuilder interfaceAnnotationMetadata =
-        new AnnotationMetadataBuilder(RooJavaType.ROO_REPOSITORY_JPA);
-    interfaceAnnotationMetadata.addAttribute(new ClassAttributeValue(new JavaSymbolName("entity"),
-        domainType));
-    // Generating interface
-    final String interfaceMdId =
-        PhysicalTypeIdentifier.createIdentifier(interfaceType,
-            getPathResolver().getPath(interfaceIdentifier));
-    final ClassOrInterfaceTypeDetailsBuilder cidBuilder =
-        new ClassOrInterfaceTypeDetailsBuilder(interfaceMdId, Modifier.PUBLIC, interfaceType,
-            PhysicalTypeCategory.INTERFACE);
-
-    // Annotate repository interface
-    cidBuilder.addAnnotation(interfaceAnnotationMetadata.build());
-
-    // Save new repository on disk
-    getTypeManagementService().createOrUpdateTypeOnDisk(cidBuilder.build());
-
-  }
-
-  /**
    * Method that generates ReadOnlyRepository interface on current package. If
    * ReadOnlyRepository already exists in this or other package, will not be
    * generated.
-   * 
+   *
    * @param repositoryPackage Package where ReadOnlyRepository should be
    *            generated
    * @return JavaType with existing or new ReadOnlyRepository
@@ -385,7 +512,7 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
    * Method that generates RepositoryCustom implementation on current package.
    * If this RepositoryCustom implementation already exists in this or other
    * package, will not be generated.
-   * 
+   *
    * @param interfaceType
    * @param repository
    * @param entity
@@ -441,14 +568,6 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
       // Replacing entity import
       input = input.replace("__ENTITY_IMPORT__", entity.getFullyQualifiedTypeName());
 
-      // Creates QEntity to be able to use QueryDsl
-      JavaType qEntity =
-          new JavaType(String.format("%s.Q%s", entity.getPackage(), entity.getSimpleTypeName()),
-              entity.getModule());
-
-      // Replacing qEntity import
-      input = input.replace("__QENTITY_IMPORT__", qEntity.getFullyQualifiedTypeName());
-
       // Replacing interface .class
       input = input.replace("__REPOSITORY_CUSTOM_INTERFACE__", interfaceType.getSimpleTypeName());
 
@@ -458,11 +577,8 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
       // Replacing entity name
       input = input.replace("__ENTITY_NAME__", entity.getSimpleTypeName());
 
-      // Replacing qEntity name
-      input = input.replace("__QENTITY_NAME__", qEntity.getSimpleTypeName());
-
       // Creating RepositoryCustomImpl class
-      fileManager.createOrUpdateTextFileIfRequired(implIdentifier, input, false);
+      getFileManager().createOrUpdateTextFileIfRequired(implIdentifier, input, false);
     } catch (final IOException e) {
       throw new IllegalStateException(String.format("Unable to create '%s'", implIdentifier), e);
     } finally {
@@ -473,263 +589,55 @@ public class RepositoryJpaOperationsImpl implements RepositoryJpaOperations {
 
   }
 
-  /**
-   * Method that generates RepositoryCustom interface and its implementation
-   * for an specific entity
-   * 
-   * @param domainType
-   * @param repositoryType
-   * @param repositoryPackage
-   * @param defaultReturnType 
-   * 
-   * @return JavaType with new RepositoryCustom interface.
-   */
-  private JavaType addRepositoryCustom(JavaType domainType, JavaType repositoryType,
-      JavaPackage repositoryPackage, JavaType defaultReturnType) {
-
-    // Getting RepositoryCustom interface JavaTYpe
-    JavaType interfaceType =
-        new JavaType(repositoryPackage.getFullyQualifiedPackageName().concat(".")
-            .concat(repositoryType.getSimpleTypeName()).concat("Custom"),
-            repositoryType.getModule());
-
-    // Check if new interface exists yet
-    final String interfaceIdentifier =
-        getPathResolver().getCanonicalPath(interfaceType.getModule(), Path.SRC_MAIN_JAVA,
-            interfaceType);
-
-    if (getFileManager().exists(interfaceIdentifier)) {
-      // Type already exists - return
-      return interfaceType;
-    }
-
-    final String interfaceMdId =
-        PhysicalTypeIdentifier.createIdentifier(interfaceType,
-            getPathResolver().getPath(interfaceIdentifier));
-    final ClassOrInterfaceTypeDetailsBuilder interfaceBuilder =
-        new ClassOrInterfaceTypeDetailsBuilder(interfaceMdId, Modifier.PUBLIC, interfaceType,
-            PhysicalTypeCategory.INTERFACE);
-
-    // Generates @RooJpaRepositoryCustom annotation with referenced entity value
-    final AnnotationMetadataBuilder repositoryCustomAnnotationMetadata =
-        new AnnotationMetadataBuilder(RooJavaType.ROO_REPOSITORY_JPA_CUSTOM);
-    repositoryCustomAnnotationMetadata.addAttribute(new ClassAttributeValue(new JavaSymbolName(
-        "entity"), domainType));
-
-    repositoryCustomAnnotationMetadata.addAttribute(new ClassAttributeValue(new JavaSymbolName(
-        "defaultReturnType"), defaultReturnType));
-
-    // Add dependencies between modules
-    getProjectOperations().addModuleDependency(interfaceType.getModule(),
-        defaultReturnType.getModule());
-
-    interfaceBuilder.addAnnotation(repositoryCustomAnnotationMetadata);
-
-    // Save RepositoryCustom interface and its implementation on disk
-    getTypeManagementService().createOrUpdateTypeOnDisk(interfaceBuilder.build());
-
-    generateRepositoryCustomImpl(interfaceType, repositoryType, domainType);
-
-    return interfaceType;
-
+  private FileManager getFileManager() {
+    return serviceInstaceManager.getServiceInstance(this, FileManager.class);
   }
 
-  public FileManager getFileManager() {
-    if (fileManager == null) {
-      // Get all Services implement FileManager interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(FileManager.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          fileManager = (FileManager) this.context.getService(ref);
-          return fileManager;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load FileManager on RepositoryJpaOperationsImpl.");
-        return null;
-      }
-    } else {
-      return fileManager;
-    }
+  private PathResolver getPathResolver() {
+    return serviceInstaceManager.getServiceInstance(this, PathResolver.class);
   }
 
-  public PathResolver getPathResolver() {
-    if (pathResolver == null) {
-      // Get all Services implement PathResolver interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(PathResolver.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          pathResolver = (PathResolver) this.context.getService(ref);
-          return pathResolver;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load PathResolver on RepositoryJpaOperationsImpl.");
-        return null;
-      }
-    } else {
-      return pathResolver;
-    }
-  }
-
-  public ProjectOperations getProjectOperations() {
-    if (projectOperations == null) {
-      // Get all Services implement ProjectOperations interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(ProjectOperations.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          projectOperations = (ProjectOperations) this.context.getService(ref);
-          return projectOperations;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load ProjectOperations on RepositoryJpaOperationsImpl.");
-        return null;
-      }
-    } else {
-      return projectOperations;
-    }
+  private ProjectOperations getProjectOperations() {
+    return serviceInstaceManager.getServiceInstance(this, ProjectOperations.class);
   }
 
   public TypeManagementService getTypeManagementService() {
-    if (typeManagementService == null) {
-      // Get all Services implement TypeManagementService interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(TypeManagementService.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          typeManagementService = (TypeManagementService) this.context.getService(ref);
-          return typeManagementService;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load TypeManagementService on RepositoryJpaOperationsImpl.");
-        return null;
-      }
-    } else {
-      return typeManagementService;
-    }
+    return serviceInstaceManager.getServiceInstance(this, TypeManagementService.class);
   }
 
   public TypeLocationService getTypeLocationService() {
-    if (typeLocationService == null) {
-      // Get all Services implement TypeLocationService interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(TypeLocationService.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          typeLocationService = (TypeLocationService) this.context.getService(ref);
-          return typeLocationService;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load TypeLocationService on RepositoryJpaOperationsImpl.");
-        return null;
-      }
-    } else {
-      return typeLocationService;
-    }
+    return serviceInstaceManager.getServiceInstance(this, TypeLocationService.class);
   }
 
   public MemberDetailsScanner getMemberDetailsScanner() {
-    if (memberDetailsScanner == null) {
-      // Get all Services implement MemberDetailsScanner interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(MemberDetailsScanner.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          memberDetailsScanner = (MemberDetailsScanner) this.context.getService(ref);
-          return memberDetailsScanner;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load MemberDetailsScanner on RepositoryJpaOperationsImpl.");
-        return null;
-      }
-    } else {
-      return memberDetailsScanner;
-    }
+    return serviceInstaceManager.getServiceInstance(this, MemberDetailsScanner.class);
   }
 
   public MetadataService getMetadataService() {
-    if (metadataService == null) {
-      // Get all Services implement MetadataService interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(MetadataService.class.getName(), null);
-
-        for (ServiceReference<?> ref : references) {
-          metadataService = (MetadataService) this.context.getService(ref);
-          return metadataService;
-        }
-
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load MetadataService on RepositoryJpaOperationsImpl.");
-        return null;
-      }
-    } else {
-      return metadataService;
-    }
+    return serviceInstaceManager.getServiceInstance(this, MetadataService.class);
   }
 
   /**
    * Method to get JpaOperations Service implementation
-   * 
+   *
    * @return
    */
-  public JpaOperationsImpl getJpaOperationsImpl() {
-    if (jpaOperations == null) {
-      // Get all Services implement JpaOperations interface
-      try {
-        ServiceReference<?>[] references =
-            this.context.getAllServiceReferences(JpaOperations.class.getName(), null);
+  public JpaOperations getJpaOperations() {
+    return serviceInstaceManager.getServiceInstance(this, JpaOperations.class);
+  }
 
-        for (ServiceReference<?> ref : references) {
-          jpaOperations = (JpaOperationsImpl) this.context.getService(ref);
-          return jpaOperations;
-        }
+  @Override
+  public boolean shouldGenerateRepository(JavaType domainType) {
+    ClassOrInterfaceTypeDetails entityDetails = getTypeLocationService().getTypeDetails(domainType);
+    return shouldGenerateRepository(entityDetails);
+  }
 
-        return null;
-
-      } catch (InvalidSyntaxException e) {
-        LOGGER.warning("Cannot load JpaOperations on ProjectConfigurationController.");
-        return null;
-      }
-    } else {
-      return jpaOperations;
+  private boolean shouldGenerateRepository(ClassOrInterfaceTypeDetails entity) {
+    Pair<FieldMetadata, RelationInfo> compositionRelation =
+        getJpaOperations().getFieldChildPartOfCompositionRelation(entity);
+    if (compositionRelation == null) {
+      return true;
     }
-  }
-
-  // Feature methods
-
-  public String getName() {
-    return FeatureNames.JPA;
-  }
-
-  public boolean isInstalledInModule(final String moduleName) {
-    return getProjectOperations().isFeatureInstalled(FeatureNames.JPA);
+    return compositionRelation.getRight().cardinality != Cardinality.ONE_TO_ONE;
   }
 }

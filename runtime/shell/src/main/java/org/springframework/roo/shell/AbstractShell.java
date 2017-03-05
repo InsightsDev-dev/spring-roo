@@ -2,6 +2,16 @@ package org.springframework.roo.shell;
 
 import static org.apache.commons.io.IOUtils.LINE_SEPARATOR;
 
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Validate;
+import org.osgi.service.component.annotations.Component;
+import org.springframework.roo.shell.event.AbstractShellStatusPublisher;
+import org.springframework.roo.shell.event.ShellStatus;
+import org.springframework.roo.shell.event.ShellStatus.Status;
+import org.springframework.roo.support.logging.HandlerUtils;
+import org.springframework.roo.support.util.CollectionUtils;
+
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -24,19 +34,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Validate;
-import org.osgi.service.component.annotations.Component;
-import org.springframework.roo.shell.event.AbstractShellStatusPublisher;
-import org.springframework.roo.shell.event.ShellStatus;
-import org.springframework.roo.shell.event.ShellStatus.Status;
-import org.springframework.roo.support.logging.HandlerUtils;
-import org.springframework.roo.support.util.CollectionUtils;
-
 /**
  * Provides a base {@link Shell} implementation.
- * 
+ *
  * @author Ben Alex
  */
 @Component
@@ -106,6 +106,52 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
     return sb.toString();
   }
 
+  public static String buildInfo() {
+    // Try to determine the bundle version
+    String bundleVersion = null;
+    String gitCommitHash = null;
+    JarFile jarFile = null;
+    try {
+      final URL classContainer =
+          AbstractShell.class.getProtectionDomain().getCodeSource().getLocation();
+      if (classContainer.toString().endsWith(".jar")) {
+        // Attempt to obtain the "Bundle-Version" version from the
+        // manifest
+        jarFile = new JarFile(new File(classContainer.toURI()), false);
+        final ZipEntry manifestEntry = jarFile.getEntry("META-INF/MANIFEST.MF");
+        final Manifest manifest = new Manifest(jarFile.getInputStream(manifestEntry));
+        bundleVersion = manifest.getMainAttributes().getValue("Bundle-Version");
+        gitCommitHash = manifest.getMainAttributes().getValue("Git-Commit-Hash");
+      }
+    } catch (final IOException ignoreAndMoveOn) {
+    } catch (final URISyntaxException ignoreAndMoveOn) {
+    } finally {
+      if (jarFile != null) {
+        try {
+          jarFile.close();
+        } catch (final IOException ignored) {
+        }
+      }
+    }
+
+    final StringBuilder sb = new StringBuilder();
+
+    if (gitCommitHash != null && gitCommitHash.length() > 7) {
+      if (sb.length() > 0) {
+        sb.append(" ");
+      }
+      sb.append("[rev ");
+      sb.append(gitCommitHash.substring(0, 7));
+      sb.append("]");
+    }
+
+    if (sb.length() == 0) {
+      sb.append("UNKNOWN BUILD ID");
+    }
+
+    return sb.toString();
+  }
+
   public static String versionInfoWithoutGit() {
     // Try to determine the bundle version
     String bundleVersion = null;
@@ -162,7 +208,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
     inBlockComment = false;
   }
 
-  @CliCommand(value = {"date"}, help = "Displays the local date and time")
+  //  @CliCommand(value = {"date"}, help = "Displays the local date and time")
   public String date() {
     return DateFormat.getDateTimeInstance(DateFormat.FULL, DateFormat.FULL).format(new Date());
   }
@@ -286,6 +332,9 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
       return true;
     } catch (final RuntimeException e) {
       setShellStatus(Status.EXECUTION_FAILED, line, parseResult);
+      if (isDevelopmentMode()) {
+        logger.severe(e.getMessage());
+      }
       try {
         // ROO-3581: When command fails, execute command listener FAILS
         notifyExecutionFailed();
@@ -313,7 +362,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
 
   /**
    * Returns any classpath resources with the given path
-   * 
+   *
    * @param path the path for which to search (never null)
    * @return <code>null</code> if the search can't be performed
    * @since 1.2.0
@@ -357,7 +406,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
    * If the path indicated by {@link #getHomeAsString()} does not exist, it
    * will be created as a directory. If this fails, an exception will be
    * thrown.
-   * 
+   *
    * @return the home directory for the current shell instance (which is
    *         guaranteed to exist and be a directory)
    */
@@ -401,7 +450,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
    * {@link AbstractShell} subclasses are encouraged to simply override
    * {@link #logCommandToOutput(String)} instead, and only override this
    * method if you actually need to fine-tune the output logic.
-   * 
+   *
    * @param line the parsed line (any comments have been removed; never null)
    * @param successful if the command was successful or not
    */
@@ -421,7 +470,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
    * Implementations should invoke {@link #getExitShellRequest()} to monitor
    * any attempts to exit the shell and release resources such as output log
    * files.
-   * 
+   *
    * @param processedLine the line that should be appended to some type of
    *            output (excluding the \n character)
    */
@@ -429,7 +478,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
 
   /**
    * Opens the given script for reading
-   * 
+   *
    * @param script the script to read (required)
    * @return a non-<code>null</code> input stream
    */
@@ -455,7 +504,8 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
     }
   }
 
-  @CliCommand(value = {"system properties"}, help = "Shows the shell's properties")
+  @CliCommand(value = {"system properties"}, help = "Shows the shell's properties such as if "
+      + "'addon development mode' is enabled, JVM version, file encoding...")
   public String props() {
     final Set<String> data = new TreeSet<String>();
     for (final Entry<Object, Object> entry : System.getProperties().entrySet()) {
@@ -471,15 +521,24 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
     return Math.round(interestedInZeroDPs) / multiplicationFactor;
   }
 
-  @CliCommand(value = {"script"},
-      help = "Parses the specified resource file and executes its commands")
-  public void script(@CliOption(key = {"", "file"}, help = "The file to locate and execute",
-      mandatory = true) final File script, @CliOption(key = "lineNumbers", mandatory = false,
-      specifiedDefaultValue = "true", unspecifiedDefaultValue = "false",
-      help = "Display line numbers when executing the script") final boolean lineNumbers) {
+  @CliCommand(
+      value = {"script"},
+      help = "Parses the specified resource file and executes its Roo commands. You can as well execute "
+          + "_*.roo_ example scripts in the Roo classpath. Ex.: `script --file clinic.roo`.")
+  public void script(
+      @CliOption(key = {"", "file"}, help = "The file to locate and execute.", mandatory = true) final File script,
+      @CliOption(key = "lineNumbers", mandatory = false, specifiedDefaultValue = "true",
+          unspecifiedDefaultValue = "false",
+          help = "Display line numbers when executing the script. "
+              + "Default if option present: `true`; default if option not present: `false`.") final boolean lineNumbers,
+      @CliOption(key = "ignoreLines", mandatory = false,
+          help = "Comma-list of prefixes to ignore the lines that starts with any of the provided "
+              + "case-sensitive prefixes.") final String ignoreLines) {
 
     Validate.notNull(script, "Script file to parse is required");
     final double startedNanoseconds = System.nanoTime();
+
+    String[] ignoreLinesPrefixes = StringUtils.split(ignoreLines == null ? "" : ignoreLines, ",");
 
     final InputStream inputStream = openScript(script);
     try {
@@ -491,9 +550,20 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
         } else {
           logger.fine(line);
         }
-        if (!"".equals(line.trim())) {
+
+        // ROO-3836
+        boolean ignoreLine = StringUtils.startsWithAny(line, ignoreLinesPrefixes);
+        if (ignoreLine) {
+          if (lineNumbers) {
+            logger.fine("Ignoring line " + i + ": " + line);
+          } else {
+            logger.fine("Ignoring: " + line);
+          }
+        }
+
+        if (!"".equals(line.trim()) && !ignoreLine) {
           final boolean success = executeScriptLine(line);
-          if (success && (line.trim().startsWith("q") || line.trim().startsWith("ex"))) {
+          if (success && (line.trim().startsWith("quit") || line.trim().startsWith("exit"))) {
             break;
           } else if (!success) {
             // Abort script processing, given something went wrong
@@ -517,7 +587,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
    * designed for simple shell implementations. Advanced implementations (eg
    * those that support ANSI codes etc) will likely want to override this
    * method and set the {@link #shellPrompt} variable directly.
-   * 
+   *
    * @param path to set (can be null or empty; must NOT be formatted in any
    *            special way eg ANSI codes)
    */
@@ -527,7 +597,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
 
   /**
    * This method changes setPromptPath with a new one
-   * 
+   *
    * @param path
    */
   public void setRooPrompt(final String prompt) {
@@ -537,7 +607,7 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
   /**
    * Default implementation of {@link Shell#setPromptPath(String, boolean))}
    * method to satisfy STS compatibility.
-   * 
+   *
    * @param path to set (can be null or empty)
    * @param overrideStyle
    */
@@ -588,46 +658,63 @@ public abstract class AbstractShell extends AbstractShellStatusPublisher impleme
     }
   }
 
-  @CliCommand(value = {"version"}, help = "Displays shell version")
-  public String version(@CliOption(key = "", help = "Special version flags") final String extra) {
+  @CliCommand(value = {"version"}, help = "Displays Roo Shell banner and version.")
+  public String version(
+      @CliOption(key = "", help = "Special version flags, like `roorocks`.") final String extra) {
     final StringBuilder sb = new StringBuilder();
 
-    if ("roorocks".equals(extra)) {
-      sb.append("               /\\ /l").append(LINE_SEPARATOR);
-      sb.append("               ((.Y(!").append(LINE_SEPARATOR);
-      sb.append("                \\ |/").append(LINE_SEPARATOR);
-      sb.append("                /  6~6,").append(LINE_SEPARATOR);
-      sb.append("                \\ _    +-.").append(LINE_SEPARATOR);
-      sb.append("                 \\`-=--^-' \\").append(LINE_SEPARATOR);
-      sb.append("                  \\   \\     |\\--------------------------+").append(
-          LINE_SEPARATOR);
-      sb.append("                 _/    \\    |  Thanks for loading Roo!  |")
+    // By default show version without Git commit ID. To see the Git commit
+    // ID use the "version" command.
+    String versionInfo = versionInfoWithoutGit();
+
+    if ("roorocks".equals(extra) || "about".equals(extra)) {
+      sb.append("           /\\ /l").append(LINE_SEPARATOR);
+      sb.append("           ((.Y(!").append(LINE_SEPARATOR);
+      sb.append("            \\ |/").append(LINE_SEPARATOR);
+      sb.append("            /  6~6,").append(LINE_SEPARATOR);
+      sb.append("            \\ _    +-.").append(LINE_SEPARATOR);
+      sb.append("             \\`-=--^-' \\").append(LINE_SEPARATOR);
+      sb.append("              \\   \\     |\\--------------------------+").append(LINE_SEPARATOR);
+      sb.append("             _/    \\    |      About Spring Roo     |").append(LINE_SEPARATOR);
+      sb.append("            (  .    Y   +---------------------------+").append(LINE_SEPARATOR);
+      sb.append("           /\"\\ `---^--v---.").append(LINE_SEPARATOR);
+      sb.append("          / _ `---\"T~~\\/~\\/    Version:    ").append(versionInfo)
           .append(LINE_SEPARATOR);
-      sb.append("                (  .    Y   +---------------------------+").append(LINE_SEPARATOR);
-      sb.append("               /\"\\ `---^--v---.").append(LINE_SEPARATOR);
-      sb.append("              / _ `---\"T~~\\/~\\/").append(LINE_SEPARATOR);
-      sb.append("             / \" ~\\.      !").append(LINE_SEPARATOR);
-      sb.append("       _    Y      Y.~~~ /'").append(LINE_SEPARATOR);
-      sb.append("      Y^|   |      | Roo 7").append(LINE_SEPARATOR);
-      sb.append("      | l   |     / .   /'").append(LINE_SEPARATOR);
-      sb.append("      | `L  | Y .^/   ~T").append(LINE_SEPARATOR);
-      sb.append("      |  l  ! | |/  | |               ____  ____  ____").append(LINE_SEPARATOR);
-      sb.append("      | .`\\/' | Y   | !              / __ \\/ __ \\/ __ \\").append(
+      sb.append("         / \" ~\\.      !        Build ID:   ").append(buildInfo())
+          .append(LINE_SEPARATOR);
+      sb.append("   _    Y      Y.~~~ /'        Platform:   OSGi R6 - Java").append(LINE_SEPARATOR);
+      sb.append("  Y^|   |      | Roo 7         Created By: DISID Corporation S.L.").append(
           LINE_SEPARATOR);
-      sb.append("      l  \"~   j l   j L______       / /_/ / / / / / / /").append(LINE_SEPARATOR);
-      sb.append("       \\,____{ __\"\" ~ __ ,\\_,\\_    / _, _/ /_/ / /_/ /").append(
+      sb.append("  | |   |      |     |                     Visit http://www.disid.com").append(
           LINE_SEPARATOR);
-      sb.append("    ~~~~~~~~~~~~~~~~~~~~~~~~~~~   /_/ |_|\\____/\\____/").append(" ")
-          .append(versionInfo()).append(LINE_SEPARATOR);
+      sb.append("  | l   |     / .   /'").append(LINE_SEPARATOR);
+      sb.append("  | `L  | Y .^/   ~T           Copyright (c) 2016 the original author or authors")
+          .append(LINE_SEPARATOR);
+      sb.append("  |  l  ! | |/  | |            All rights reserved.").append(LINE_SEPARATOR);
+      sb.append("  | .`\\/' | Y   | !").append(LINE_SEPARATOR);
+      sb.append("  l  \"~   j l   j L______      Visit http://projects.spring.io/spring-roo")
+          .append(LINE_SEPARATOR);
+      sb.append("   \\,____{ __\"\" ~ __ ,\\_,\\_").append(LINE_SEPARATOR);
+      sb.append(" ~~~~~~~~~~~~~~~~~~~~~~~~~~    Licensed under the Apache License, v2.0").append(
+          LINE_SEPARATOR);
       return sb.toString();
     }
 
-    sb.append("    ____  ____  ____  ").append(LINE_SEPARATOR);
-    sb.append("   / __ \\/ __ \\/ __ \\ ").append(LINE_SEPARATOR);
-    sb.append("  / /_/ / / / / / / / ").append(LINE_SEPARATOR);
-    sb.append(" / _, _/ /_/ / /_/ /  ").append(LINE_SEPARATOR);
-    sb.append("/_/ |_|\\____/\\____/   ").append(" ").append(versionInfo()).append(LINE_SEPARATOR);
-    sb.append(LINE_SEPARATOR);
+    sb.append("                _                               ").append(LINE_SEPARATOR);
+    sb.append(" ___ _ __  _ __(_)_ __   __ _   _ __ ___   ___  ").append(LINE_SEPARATOR);
+    sb.append("/ __| '_ \\| '__| | '_ \\ / _` | | '__/ _ \\ / _ \\ ").append(LINE_SEPARATOR);
+    sb.append("\\__ \\ |_) | |  | | | | | (_| | | | | (_) | (_) |").append(LINE_SEPARATOR);
+    sb.append("|___/ .__/|_|  |_|_| |_|\\__, | |_|  \\___/ \\___/ ").append(LINE_SEPARATOR);
+    sb.append("    |_|                 |___/  ");
+
+    // We have only an space of 17 chars to put the version info.
+    if (versionInfo.length() < 17) {
+
+      // Align version info to the right
+      sb.append(StringUtils.repeat(" ", 17 - versionInfo.length()));
+    }
+
+    sb.append(versionInfo).append(LINE_SEPARATOR);
 
     return sb.toString();
   }

@@ -5,7 +5,7 @@
     <groupId>org.springframework.roo</groupId>
     <artifactId>org.springframework.roo.root</artifactId>
     <packaging>pom</packaging>
-    <version>2.0.0.BUILD-SNAPSHOT</version>
+    <version>2.0.0.RC1</version>
     <name>Spring Roo</name>
     <url>http://projects.spring.io/spring-roo/</url>
     <licenses>
@@ -22,10 +22,12 @@
     <description>Spring Roo is a next-generation rapid application development tool for Java developers. It focuses on higher productivity, stock-standard Java APIs, high usability, avoiding engineering trade-offs and facilitating easy Roo removal.</description>
     <inceptionYear>2009</inceptionYear>
     <modules>
-        <!-- NB: Update the <dependencyManagement> section in this pom.xml if you 
-            add/remove/rename any module below! -->
+        <!-- 
+          NB: Update the <dependencyManagement> section in this pom.xml if you
+          add/remove/rename any module below! -->
         <!-- ROO Core -->
         <module>runtime</module>
+
         <!-- ROO Addons -->
         <module>addon-configurable</module>
         <module>addon-javabean</module>
@@ -34,10 +36,9 @@
         <module>addon-test</module>
         <module>addon-jpa</module>
         <module>addon-dto</module>
-        <module>addon-dod</module>
-        <module>addon-finder</module>
         <module>addon-backup</module>
         <module>addon-web-mvc-controller</module>
+        <module>addon-web-mvc-exceptions</module>
         <module>addon-web-mvc-views</module>
         <module>addon-web-mvc-thymeleaf</module>
         <module>addon-web-mvc-i18n</module>
@@ -49,15 +50,18 @@
         <module>addon-push-in</module>
         <module>addon-field</module>
         <module>addon-cache</module>
+        <module>addon-webflow</module>
+        <module>addon-ws</module>
         <module>annotations</module>
-        <!-- Web UI -->
+        <module>addon-email</module>
+        <module>addon-jms</module>
+        <!-- Web UI 
         <module>web-ui</module>
-        
+        -->
+
         <!-- Excluded modules on Spring Roo 2.0.M2 -->
         <!-- <module>addon-tailor</module>
         <module>addon-cloud</module>
-        <module>addon-jms</module>
-        <module>addon-email</module>
         <module>addon-web-selenium</module>
         <module>addon-jdbc</module>
         <module>addon-dbre</module>
@@ -76,6 +80,7 @@
             <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
         </repository>
     </distributionManagement>
+
     <repositories>
         <repository>
             <id>spring-roo-repository-release</id>
@@ -86,19 +91,12 @@
             </snapshots>
         </repository>
     </repositories>
+
     <pluginRepositories>
         <pluginRepository>
             <id>spring-maven-release</id>
             <name>Spring Maven Release Repository</name>
             <url>http://maven.springframework.org/release</url>
-        </pluginRepository>
-        <pluginRepository>
-            <id>spring-roo-repository-bundles</id>
-            <name>Spring Roo Repository</name>
-            <url>http://spring-roo-repository.springsource.org/bundles</url>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
         </pluginRepository>
     </pluginRepositories>
 
@@ -136,16 +134,17 @@
     </developers>
 
     <properties>
+        <freemarker.version>2.3.23_1</freemarker.version>
         <java.version>1.7</java.version>
         <junit.version>4.11</junit.version>
-        <powermock.version>1.4.12</powermock.version>
-        <spring.version>4.3.1.RELEASE</spring.version>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <osgi.version>6.0.0</osgi.version>
-        <slf4j.version>1.7.12</slf4j.version>
+        <main.basedir>${basedir}</main.basedir>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
-        <main.basedir>${basedir}</main.basedir>
+        <osgi.version>6.0.0</osgi.version>
+        <powermock.version>1.4.12</powermock.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <slf4j.version>1.7.12</slf4j.version>
+        <spring.version>4.3.1.RELEASE</spring.version>
     </properties>
 
     <dependencyManagement>
@@ -497,22 +496,7 @@
             </dependency>
             <dependency>
                 <groupId>org.springframework.roo</groupId>
-                <artifactId>org.springframework.roo.addon.dod.addon</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.roo</groupId>
-                <artifactId>org.springframework.roo.addon.dod.annotations</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.roo</groupId>
-                <artifactId>org.springframework.roo.addon.test.addon</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.roo</groupId>
-                <artifactId>org.springframework.roo.addon.test.annotations</artifactId>
+                <artifactId>org.springframework.roo.addon.test</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -562,6 +546,16 @@
             </dependency>
             <dependency>
                 <groupId>org.springframework.roo</groupId>
+                <artifactId>org.springframework.roo.addon.web.mvc.exceptions.addon</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.roo</groupId>
+                <artifactId>org.springframework.roo.addon.web.mvc.exceptions.annotations</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.roo</groupId>
                 <artifactId>org.springframework.roo.addon.backup</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -598,6 +592,11 @@
             <dependency>
                 <groupId>org.springframework.roo</groupId>
                 <artifactId>org.springframework.roo.addon.security.annotations</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.roo</groupId>
+                <artifactId>org.springframework.roo.addon.pushin</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -736,11 +735,11 @@
                 <artifactId>org.springframework.roo.converters</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <dependency>
+            <!-- <dependency>
                 <groupId>org.springframework.roo</groupId>
                 <artifactId>org.springframework.roo.rest.publisher</artifactId>
                 <version>${project.version}</version>
-            </dependency>
+            </dependency>-->
             <dependency>
                 <groupId>org.springframework.roo</groupId>
                 <artifactId>org.springframework.roo.shell</artifactId>
@@ -776,7 +775,17 @@
                 <artifactId>org.springframework.roo.url.stream</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <!-- Test-scoped dependencies (not OSGi, but not included in any assemblies 
+            <dependency>
+                <groupId>org.springframework.roo</groupId>
+                <artifactId>org.springframework.roo.addon.ws.addon</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.roo</groupId>
+                <artifactId>org.springframework.roo.addon.ws.annotations</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- Test-scoped dependencies (not OSGi, but not included in any assemblies
                 either) -->
             <dependency>
                 <groupId>junit</groupId>
@@ -812,7 +821,7 @@
             <dependency>
               <groupId>org.apache.servicemix.bundles</groupId>
               <artifactId>org.apache.servicemix.bundles.freemarker</artifactId>
-              <version>2.3.23_1</version>
+              <version>${freemarker.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -909,35 +918,6 @@
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-source-plugin</artifactId>
-                    <version>2.2.1</version>
-                    <executions>
-                        <execution>
-                            <id>attach-sources</id>
-                            <goals>
-                                <goal>jar-no-fork</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-javadoc-plugin</artifactId>
-                    <version>2.9.1</version>
-                    <executions>
-                        <execution>
-                            <id>attach-javadocs</id>
-                            <goals>
-                                <goal>jar</goal>
-                            </goals>
-                            <!-- To compile ROO using Java 8 uncomment this -->
-                            <!-- <configuration> <additionalparam>-Xdoclint:none</additionalparam> 
-                                </configuration> -->
-                        </execution>
-                    </executions>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-enforcer-plugin</artifactId>
                     <version>1.2</version>
                     <configuration>
@@ -1005,7 +985,7 @@
                             </goals>
                         </execution>
                     </executions>
-                </plugin>               
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
@@ -1029,24 +1009,52 @@
             <id>jdk7</id>
             <activation>
                 <jdk>1.7</jdk>
+                <property>
+                    <name>!skipRelease</name>
+                </property>
             </activation>
             <build>
                 <plugins>
                     <plugin>
-                           <groupId>org.apache.maven.plugins</groupId>
-                           <artifactId>maven-javadoc-plugin</artifactId>
-                       </plugin>
-                </plugins>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>2.9.1</version>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>2.2.1</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+               </plugins>
             </build>
         </profile>
         <profile>
-            <!-- 
+            <!--
             Profile to prevent errors if Spring Roo is compiled using Java 8
             http://stackoverflow.com/questions/15886209/maven-is-not-working-in-java-8-when-javadoc-tags-are-incomplete
             -->
             <id>jdk8</id>
             <activation>
                 <jdk>1.8</jdk>
+                <property>
+                    <name>!skipRelease</name>
+                </property>
             </activation>
             <build>
                 <plugins>
@@ -1066,7 +1074,20 @@
                             </execution>
                         </executions>
                     </plugin>
-                </plugins>
+                     <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>2.2.1</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+               </plugins>
             </build>
         </profile>
         <profile>

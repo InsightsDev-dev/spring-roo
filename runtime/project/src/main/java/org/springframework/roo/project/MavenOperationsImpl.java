@@ -14,6 +14,7 @@ import org.springframework.roo.model.JavaPackage;
 import org.springframework.roo.model.JavaType;
 import org.springframework.roo.process.manager.ActiveProcessManager;
 import org.springframework.roo.process.manager.FileManager;
+import org.springframework.roo.process.manager.MutableFile;
 import org.springframework.roo.process.manager.ProcessManager;
 import org.springframework.roo.project.maven.Pom;
 import org.springframework.roo.project.packaging.PackagingProvider;
@@ -29,15 +30,18 @@ import org.w3c.dom.Element;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.Properties;
 import java.util.logging.Logger;
 
 /**
  * Implementation of {@link MavenOperations}.
- * 
+ *
  * @author Ben Alex
  * @author Alan Stewart
  * @author Juan Carlos García
@@ -48,7 +52,8 @@ import java.util.logging.Logger;
 @Service
 public class MavenOperationsImpl extends AbstractProjectOperations implements MavenOperations {
 
-  protected final static Logger LOGGER = HandlerUtils.getLogger(MavenOperationsImpl.class);
+  protected static final Logger LOGGER = HandlerUtils.getLogger(MavenOperationsImpl.class);
+  private static final String JAVA_PRODUCT_VERSION_DEFAULT = "6";
 
   private PackagingProviderRegistry packagingProviderRegistry;
   private ProcessManager processManager;
@@ -67,7 +72,7 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
 
     /**
      * Constructor
-     * 
+     *
      * @param inputStream
      * @param processManager
      */
@@ -111,13 +116,12 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
     }
   }
 
-  public void createModule(Pom parentPom, final String moduleName,
+  public void createModule(final String moduleName,
       final PackagingProvider selectedPackagingProvider, final String artifactId) {
-    createModule(parentPom, moduleName, selectedPackagingProvider, artifactId, null);
+    createModule(moduleName, selectedPackagingProvider, artifactId, null);
   }
 
-
-  private void createModule(Pom parentPom, final String moduleName,
+  private void createModule(final String moduleName,
       final PackagingProvider selectedPackagingProvider, final String artifactId,
       final String folder) {
 
@@ -127,13 +131,9 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
       throw new IllegalArgumentException(String.format("Module %s already exists", moduleName));
     }
 
-    if (parentPom == null) {
-      // Get current module as parent
-      parentPom = getProjectOperations().getFocusedModule();
-    } else {
-      // Set changes into the parent module
-      setModule(parentPom);
-    }
+    // Get parent pom
+    Pom parentPom = getProjectOperations().getPomFromModuleName("");
+    setModule(parentPom);
 
     // Validate parent has POM packaging
     if (!parentPom.getPackaging().equals("pom")) {
@@ -181,22 +181,29 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
 
     // Create parent pom
     parentPackagingProvider.createArtifacts(topLevelPackage, projectName,
-        getJavaVersion(majorJavaVersion), null, "", this);
+        getJavaProductVersion(majorJavaVersion), null, "", this);
 
+    // Add java.version property if specified
+    if (majorJavaVersion != null) {
+      getProjectOperations().addProperty("",
+          new Property("java.version", getJavaVersion(majorJavaVersion)));
+    }
 
     Pom pom = getProjectOperations().getPomFromModuleName("");
 
-    // If developer selects STANDARD multimodule project, is necessary to create first
-    // the standard modules (model, repository, integration, service-api and service-impl
+    // If developer selects STANDARD multimodule project, is necessary to
+    // create first
+    // the standard modules (model, repository, integration, service-api and
+    // service-impl
     if (multimodule == Multimodule.STANDARD) {
-      createModule(pom, "model", jarPackagingProvider, "model");
-      createModule(pom, "repository", jarPackagingProvider, "repository");
+      createModule("model", jarPackagingProvider, "model");
+      createModule("repository", jarPackagingProvider, "repository");
 
       // ROO-3762: Generate integration module by default
-      createModule(pom, "integration", jarPackagingProvider, "integration");
+      createModule("integration", jarPackagingProvider, "integration");
 
-      createModule(pom, "service-api", jarPackagingProvider, "service.api");
-      createModule(pom, "service-impl", jarPackagingProvider, "service.impl");
+      createModule("service-api", jarPackagingProvider, "service.api");
+      createModule("service-impl", jarPackagingProvider, "service.impl");
 
       // Add dependencies between modules
       getProjectOperations().addDependency("repository", pom.getGroupId(), "model",
@@ -213,21 +220,28 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
           "${project.version}");
       getProjectOperations().addDependency("service-impl", pom.getGroupId(), "integration",
           "${project.version}");
+
     }
 
-    // In all cases, multimodule architectures have an application module where Spring Boot artifacts are created 
-    createModule(pom, "application", warPackagingProvider, "application", "");
+    // In all cases, multimodule architectures have an application module
+    // where Spring Boot artifacts are created
+    createModule("application", warPackagingProvider, "application", "");
 
     installApplicationConfiguration("application");
 
-    // ROO-3687: Generates necessary Spring Boot artifacts into application module.
+    // ROO-3687: Generates necessary Spring Boot artifacts into application
+    // module.
     createSpringBootApplicationClass(topLevelPackage, projectName);
-    //    createApplicationTestsClass(topLevelPackage, projectName);
+    // createApplicationTestsClass(topLevelPackage, projectName);
 
     // ROO-3741: Including banner.txt on application module
     addBannerFile(getPomFromModuleName("application"));
 
-    // Also, if STANDARD multimodule project has been selected, is necessary to include dependencies between
+    // add application-dev.properties on application module
+    addApplicationDevPropertiesFile(getPomFromModuleName("application"), topLevelPackage);
+
+    // Also, if STANDARD multimodule project has been selected, is necessary
+    // to include dependencies between
     // application module and the generated modules above
     if (multimodule == Multimodule.STANDARD) {
       getProjectOperations().addDependency("application", pom.getGroupId(), "service.impl",
@@ -255,7 +269,6 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
     }
     getProjectOperations().addDependencies(moduleName, requiredDependencies);
 
-
     // Add Plugins
     List<Element> plugins = XmlUtils.findElements("/configuration/plugins/plugin", configuration);
     for (Element element : plugins) {
@@ -269,22 +282,78 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
       final Integer majorJavaVersion, final PackagingProvider selectedPackagingProvider) {
     Validate.isTrue(isCreateProjectAvailable(), "Project creation is unavailable at this time");
     final PackagingProvider packagingProvider = getPackagingProvider(selectedPackagingProvider);
+
     packagingProvider.createArtifacts(topLevelPackage, projectName,
-        getJavaVersion(majorJavaVersion), null, "", this);
+        getJavaProductVersion(majorJavaVersion), null, "", this);
+
+    // Add java.version property if specified
+    if (majorJavaVersion != null) {
+      getProjectOperations().addProperty("",
+          new Property("java.version", getJavaVersion(majorJavaVersion)));
+    }
 
     // ROO-3687: Generates necessary Spring Boot artifacts
     createSpringBootApplicationClass(topLevelPackage, projectName);
-    //    createApplicationTestsClass(topLevelPackage, projectName);
+    // createApplicationTestsClass(topLevelPackage, projectName);
 
     // ROO-3741: Including banner.txt
     addBannerFile(getPomFromModuleName(""));
+
+    // add application-dev.properties
+    addApplicationDevPropertiesFile(getPomFromModuleName(""), topLevelPackage);
   }
 
   /**
-   * This method creates a banner.txt file inside generated project that
-   * will be displayed when the generated Spring Boot application starts.
-   * 
-   * @param Pom module where banner.txt should be generated
+   * Copy file application-dev.properties
+   *
+   * @param Pom
+   *            module where application-dev.properties should be generated
+   * @param topLevelPackage
+   *         JavaPackage that represents the top level package
+   */
+  private void addApplicationDevPropertiesFile(Pom module, JavaPackage topLevelPackage) {
+    LogicalPath resourcesPath =
+        LogicalPath.getInstance(Path.SRC_MAIN_RESOURCES, module.getModuleName());
+    String filePath = getPathResolver().getIdentifier(resourcesPath, "application-dev.properties");
+    MutableFile appDevMutableFile = null;
+    final Properties props = new Properties();
+
+    InputStream inputStream = null;
+    try {
+      if (fileManager.exists(filePath)) {
+        appDevMutableFile = fileManager.updateFile(filePath);
+        inputStream = appDevMutableFile.getInputStream();
+        props.load(inputStream);
+      } else {
+        appDevMutableFile = fileManager.createFile(filePath);
+      }
+    } catch (final IOException ioe) {
+      throw new IllegalStateException(ioe);
+    } finally {
+      IOUtils.closeQuietly(inputStream);
+    }
+
+    OutputStream outputStream = null;
+    try {
+      outputStream = appDevMutableFile.getOutputStream();
+      props.put("spring.messages.cache-seconds", "0");
+      props.put("logging.file", "");
+      props.put("logging.level.".concat(topLevelPackage.getFullyQualifiedPackageName()), "DEBUG");
+      props.store(outputStream, "Updated at " + new Date());
+    } catch (final IOException ioe) {
+      throw new IllegalStateException(ioe);
+    } finally {
+      IOUtils.closeQuietly(outputStream);
+    }
+
+  }
+
+  /**
+   * This method creates a banner.txt file inside generated project that will
+   * be displayed when the generated Spring Boot application starts.
+   *
+   * @param Pom
+   *            module where banner.txt should be generated
    */
   private void addBannerFile(Pom module) {
 
@@ -315,11 +384,13 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
   }
 
   /**
-   * Creates topLevelPackage folder structure inside the focused module.
-   * If folder is not null, adds this new folder inside topLevelPackage folders
-   * 
-   * @param topLevelPackage folder structure represented as a package (required)
-   * @param folder the folder to add inside topLevelPackage (can be null)
+   * Creates topLevelPackage folder structure inside the focused module. If
+   * folder is not null, adds this new folder inside topLevelPackage folders
+   *
+   * @param topLevelPackage
+   *            folder structure represented as a package (required)
+   * @param folder
+   *            the folder to add inside topLevelPackage (can be null)
    */
   private void createFolder(JavaPackage topLevelPackage, String folder) {
 
@@ -335,7 +406,6 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
     getFileManager().createDirectory(physicalPath);
 
   }
-
 
   public void createSpringBootApplicationClass(JavaPackage topLevelPackage, String projectName) {
     // Set projectName if null
@@ -374,41 +444,49 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
 
   }
 
-  //  public void createApplicationTestsClass(JavaPackage topLevelPackage, String projectName) {
-  //    // Set projectName if null
-  //    if (projectName == null) {
-  //      projectName = topLevelPackage.getLastElement();
-  //    }
-  //    // Uppercase projectName
-  //    projectName =
-  //        projectName.substring(0, 1).toUpperCase()
-  //            .concat(projectName.substring(1, projectName.length()));
-  //    String testClass = projectName.concat("ApplicationTests");
+  // public void createApplicationTestsClass(JavaPackage topLevelPackage,
+  // String projectName) {
+  // // Set projectName if null
+  // if (projectName == null) {
+  // projectName = topLevelPackage.getLastElement();
+  // }
+  // // Uppercase projectName
+  // projectName =
+  // projectName.substring(0, 1).toUpperCase()
+  // .concat(projectName.substring(1, projectName.length()));
+  // String testClass = projectName.concat("ApplicationTests");
   //
-  //    final JavaType javaType =
-  //        new JavaType(topLevelPackage.getFullyQualifiedPackageName().concat(".").concat(testClass));
-  //    final String physicalPath =
-  //        getPathResolver().getFocusedCanonicalPath(Path.SRC_TEST_JAVA, javaType);
-  //    if (getFileManager().exists(physicalPath)) {
-  //      throw new RuntimeException(
-  //          "ERROR: You are trying to create two Java classes annotated with @SpringApplicationConfiguration that will be used to execute JUnit tests");
-  //    }
+  // final JavaType javaType =
+  // new
+  // JavaType(topLevelPackage.getFullyQualifiedPackageName().concat(".").concat(testClass));
+  // final String physicalPath =
+  // getPathResolver().getFocusedCanonicalPath(Path.SRC_TEST_JAVA, javaType);
+  // if (getFileManager().exists(physicalPath)) {
+  // throw new RuntimeException(
+  // "ERROR: You are trying to create two Java classes annotated with
+  // @SpringApplicationConfiguration that will be used to execute JUnit
+  // tests");
+  // }
   //
-  //    InputStream inputStream = null;
-  //    try {
-  //      inputStream = FileUtils.getInputStream(getClass(), "SpringApplicationTests-template._java");
-  //      String input = IOUtils.toString(inputStream);
-  //      // Replacing package
-  //      input = input.replace("__PACKAGE__", topLevelPackage.getFullyQualifiedPackageName());
-  //      input = input.replace("__PROJECT_NAME__", projectName);
-  //      getFileManager().createOrUpdateTextFileIfRequired(physicalPath, input, false);
-  //    } catch (final IOException e) {
-  //      throw new IllegalStateException("Unable to create '" + physicalPath + "'", e);
-  //    } finally {
-  //      IOUtils.closeQuietly(inputStream);
-  //    }
+  // InputStream inputStream = null;
+  // try {
+  // inputStream = FileUtils.getInputStream(getClass(),
+  // "SpringApplicationTests-template._java");
+  // String input = IOUtils.toString(inputStream);
+  // // Replacing package
+  // input = input.replace("__PACKAGE__",
+  // topLevelPackage.getFullyQualifiedPackageName());
+  // input = input.replace("__PROJECT_NAME__", projectName);
+  // getFileManager().createOrUpdateTextFileIfRequired(physicalPath, input,
+  // false);
+  // } catch (final IOException e) {
+  // throw new IllegalStateException("Unable to create '" + physicalPath +
+  // "'", e);
+  // } finally {
+  // IOUtils.closeQuietly(inputStream);
+  // }
   //
-  //  }
+  // }
 
   public void executeMvnCommand(final String extra) throws IOException {
 
@@ -446,13 +524,15 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
 
   /**
    * Returns the project's target Java version in POM format
-   * 
-   * @param majorJavaVersion the major version provided by the user; can be
+   *
+   * @param majorJavaVersion
+   *            the major version provided by the user; can be
    *            <code>null</code> to auto-detect it
    * @return a non-blank string
    */
   private String getJavaVersion(final Integer majorJavaVersion) {
-    if (majorJavaVersion != null && majorJavaVersion >= 6 && majorJavaVersion <= 8) {
+    Validate.notNull(majorJavaVersion, "ERROR: Java version required");
+    if (majorJavaVersion >= 6 && majorJavaVersion <= 8) {
       switch (majorJavaVersion) {
         case 6:
           return "1.6";
@@ -464,8 +544,24 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
           break;
       }
     }
-    // By default, Spring Roo projects will be generated on Java 1.8
-    return "1.8";
+    // Return null if given value is invalid.
+    return null;
+  }
+
+  /**
+   * Returns the project's target Java version in String format
+   *
+   * @param majorJavaVersion
+   *            the major version provided by the user; can be
+   *            <code>null</code> to auto-detect it
+   * @return a non-blank string
+   */
+  private String getJavaProductVersion(final Integer majorJavaVersion) {
+    if (majorJavaVersion != null && majorJavaVersion >= 6 && majorJavaVersion <= 8) {
+      return String.valueOf(majorJavaVersion);
+    } else {
+      return JAVA_PRODUCT_VERSION_DEFAULT;
+    }
   }
 
   private PackagingProvider getPackagingProvider(final PackagingProvider selectedPackagingProvider) {
@@ -570,7 +666,6 @@ public class MavenOperationsImpl extends AbstractProjectOperations implements Ma
       return fileManager;
     }
   }
-
 
   public ProjectOperations getProjectOperations() {
 

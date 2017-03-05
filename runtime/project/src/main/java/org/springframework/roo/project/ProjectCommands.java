@@ -28,7 +28,7 @@ import org.springframework.roo.support.logging.HandlerUtils;
 
 /**
  * Commands related to file system monitoring and process management.
- * 
+ *
  * @author Ben Alex
  * @author Juan Carlos García
  * @since 1.1
@@ -37,7 +37,7 @@ import org.springframework.roo.support.logging.HandlerUtils;
 @Service
 public class ProjectCommands implements CommandMarker {
 
-  private static final String DEVELOPMENT_MODE_COMMAND = "development mode";
+  private static final String DEVELOPMENT_MODE_COMMAND = "addon development mode";
   private static final String PROJECT_SETUP_COMMAND = "project setup";
   private static final String PROJECT_SCAN_SPEED_COMMAND = "project scan speed";
   private static final String PROJECT_SCAN_STATUS_COMMAND = "project scan status";
@@ -92,21 +92,31 @@ public class ProjectCommands implements CommandMarker {
   }
 
 
-  @CliCommand(value = PROJECT_SETUP_COMMAND, help = "Creates a new Maven project")
+  @CliCommand(value = PROJECT_SETUP_COMMAND, help = "Creates a new Maven project.")
   public void createProject(
       @CliOption(
           key = {"topLevelPackage"},
           mandatory = true,
           optionContext = "update",
-          help = "The uppermost package name (this becomes the <groupId> in Maven and also the '~' value when using Roo's shell)") final JavaPackage topLevelPackage,
+          help = "The uppermost package name (this becomes the `<groupId>` in Maven and also the `~` value "
+              + "when using Roo Shell).") final JavaPackage topLevelPackage,
       @CliOption(key = "projectName",
-          help = "The name of the project (last segment of package name used as default)") final String projectName,
-      @CliOption(key = "multimodule", mandatory = false, specifiedDefaultValue = "STANDARD",
-          help = "Option to use a multmodule architecture") final Multimodule multimodule,
-      @CliOption(key = "java",
-          help = "Forces a particular major version of Java to be used (DEFAULT: 8)") final Integer majorJavaVersion,
-      @CliOption(key = "packaging", help = "The Maven packaging of this project",
-          unspecifiedDefaultValue = JarPackaging.NAME) final PackagingProvider packaging) {
+          help = "The name of the project (this becomes the `<artifactId>` in Maven). "
+              + "Default if option not present: last segment of `--topLevelPackage` name used.") final String projectName,
+      @CliOption(
+          key = "multimodule",
+          mandatory = false,
+          specifiedDefaultValue = "STANDARD",
+          help = "Option to use a multimodule architecture. "
+              + "Possible values are: `BASIC` (root module with child 'application' module), and "
+              + "`STANDARD` (root module with children modules: 'application', 'model', 'repository', "
+              + "'service-api', 'service-impl' and 'integration'). "
+              + "Default if option present: `STANDARD`") final Multimodule multimodule,
+      @CliOption(key = "java", help = "Forces a particular major version of Java to be used. "
+          + "Default if option not present: Java 6 inherited from Spring Boot.") final Integer majorJavaVersion,
+      @CliOption(key = "packaging", help = "The Maven packaging of this project."
+          + "This option is not available if 'multimodule' is specified. "
+          + "Default if option not present: 'jar'.", unspecifiedDefaultValue = JarPackaging.NAME) final PackagingProvider packaging) {
 
     if (multimodule != null) {
       getMavenOperations().createMultimoduleProject(topLevelPackage, projectName, majorJavaVersion,
@@ -122,9 +132,11 @@ public class ProjectCommands implements CommandMarker {
     return getProjectOperations().isFocusedProjectAvailable();
   }
 
-  @CliCommand(value = DEVELOPMENT_MODE_COMMAND,
-      help = "Switches the system into development mode (greater diagnostic information)")
-  public String developmentMode(@CliOption(key = {"", "enabled"}, mandatory = false,
+  @CliCommand(
+      value = DEVELOPMENT_MODE_COMMAND,
+      help = "Switches the system into development mode, which enables add-on development commands and "
+          + "shows greater diagnostic information.")
+  public String developmentMode(@CliOption(key = {"enabled"}, mandatory = false,
       specifiedDefaultValue = "true", unspecifiedDefaultValue = "true",
       help = "Activates development mode") final boolean enabled) {
 
@@ -145,7 +157,10 @@ public class ProjectCommands implements CommandMarker {
     return "Development mode set to " + enabled;
   }
 
-  @CliCommand(value = PROJECT_SCAN_NOW_COMMAND, help = "Perform a manual file system scan")
+  @CliCommand(
+      value = PROJECT_SCAN_NOW_COMMAND,
+      help = "Performs a manual file system scan, calling thread monitors and checking that all files "
+          + "are updated.")
   public String scan() {
     if (processManager == null) {
       processManager = getProcessManager();
@@ -165,7 +180,8 @@ public class ProjectCommands implements CommandMarker {
   }
 
   @CliCommand(value = PROJECT_SCAN_STATUS_COMMAND,
-      help = "Display file system scanning information")
+      help = "Displays file system scanning information such as the time lasted for last scan "
+          + "and scanning frequency.")
   public String scanningInfo() {
     if (processManager == null) {
       processManager = getProcessManager();
@@ -191,7 +207,8 @@ public class ProjectCommands implements CommandMarker {
     return sb.toString();
   }
 
-  @CliCommand(value = PROJECT_SCAN_SPEED_COMMAND, help = "Changes the file system scanning speed")
+  @CliCommand(value = PROJECT_SCAN_SPEED_COMMAND,
+      help = "Changes the time inteval between file system scans.")
   public String scanningSpeed(@CliOption(key = {"", "ms"}, mandatory = true,
       help = "The number of milliseconds between each scan") final long minimumDelayBetweenScan) {
     if (processManager == null) {

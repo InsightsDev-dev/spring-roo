@@ -1,13 +1,6 @@
 package org.springframework.roo.addon.dto.addon;
 
-import static org.springframework.roo.model.JdkJavaType.LIST;
-import static org.springframework.roo.model.JdkJavaType.SET;
-
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
+import static org.springframework.roo.shell.OptionContexts.PROJECT;
 
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -15,6 +8,11 @@ import org.apache.commons.lang3.Validate;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.InvalidSyntaxException;
+import org.osgi.framework.ServiceReference;
+import org.osgi.service.component.ComponentContext;
+import org.springframework.roo.addon.field.addon.FieldCommands;
 import org.springframework.roo.addon.field.addon.FieldCreatorProvider;
 import org.springframework.roo.classpath.TypeLocationService;
 import org.springframework.roo.classpath.TypeManagementService;
@@ -33,9 +31,7 @@ import org.springframework.roo.classpath.operations.jsr303.CollectionField;
 import org.springframework.roo.classpath.operations.jsr303.DateField;
 import org.springframework.roo.classpath.operations.jsr303.DateFieldPersistenceType;
 import org.springframework.roo.classpath.operations.jsr303.EnumField;
-import org.springframework.roo.classpath.operations.jsr303.ListField;
 import org.springframework.roo.classpath.operations.jsr303.NumericField;
-import org.springframework.roo.classpath.operations.jsr303.SetField;
 import org.springframework.roo.classpath.operations.jsr303.StringField;
 import org.springframework.roo.classpath.operations.jsr303.UploadedFileContentType;
 import org.springframework.roo.classpath.operations.jsr303.UploadedFileField;
@@ -45,23 +41,35 @@ import org.springframework.roo.model.EnumDetails;
 import org.springframework.roo.model.JavaSymbolName;
 import org.springframework.roo.model.JavaType;
 import org.springframework.roo.model.JdkJavaType;
-import org.springframework.roo.model.JpaJavaType;
 import org.springframework.roo.model.ReservedWords;
 import org.springframework.roo.model.RooJavaType;
 import org.springframework.roo.project.LogicalPath;
 import org.springframework.roo.project.ProjectOperations;
+import org.springframework.roo.shell.Converter;
 import org.springframework.roo.shell.ShellContext;
+import org.springframework.roo.support.logging.HandlerUtils;
+
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Provides field creation operations support for DTO classes by implementing
  * FieldCreatorProvider.
- * 
+ *
  * @author Sergio Clares
  * @since 2.0
  */
 @Component
 @Service
 public class DtoFieldCreatorProvider implements FieldCreatorProvider {
+
+  protected final static Logger LOGGER = HandlerUtils.getLogger(FieldCommands.class);
+
+  //------------ OSGi component attributes ----------------//
+  private BundleContext context;
 
   @Reference
   private TypeLocationService typeLocationService;
@@ -71,6 +79,16 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   private ProjectOperations projectOperations;
   @Reference
   private TypeManagementService typeManagementService;
+
+  private Converter<JavaType> javaTypeConverter;
+
+  protected void activate(final ComponentContext context) {
+    this.context = context.getBundleContext();
+  }
+
+  protected void deactivate(final ComponentContext context) {
+    this.context = null;
+  }
 
   @Override
   public boolean isValid(JavaType javaType) {
@@ -103,6 +121,11 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
+  public boolean isFieldCollectionAvailable() {
+    return false;
+  }
+
+  @Override
   public boolean isColumnMandatoryForFieldBoolean(ShellContext shellContext) {
     return false;
   }
@@ -115,6 +138,24 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   @Override
   public boolean isTransientVisibleForFieldBoolean(ShellContext shellContext) {
     return false;
+  }
+
+  @Override
+  public boolean isAssertFalseVisibleForFieldBoolean(ShellContext shellContext) {
+    String param = shellContext.getParameters().get("assertTrue");
+    if (param != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isAssertTrueVisibleForFieldBoolean(ShellContext shellContext) {
+    String param = shellContext.getParameters().get("assertFalse");
+    if (param != null) {
+      return false;
+    }
+    return true;
   }
 
   @Override
@@ -138,6 +179,61 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
+  public boolean isFutureVisibleForFieldDate(ShellContext shellContext) {
+    String past = shellContext.getParameters().get("past");
+    if (past != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isPastVisibleForFieldDate(ShellContext shellContext) {
+    String past = shellContext.getParameters().get("future");
+    if (past != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean areDateAndTimeFormatVisibleForFieldDate(ShellContext shellContext) {
+    String dateTimeFormatPattern = shellContext.getParameters().get("dateTimeFormatPattern");
+    if (dateTimeFormatPattern != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isDateTimeFormatPatternVisibleForFieldDate(ShellContext shellContext) {
+    String dateFormat = shellContext.getParameters().get("dateFormat");
+    String timeFormat = shellContext.getParameters().get("timeFormat");
+    if (dateFormat == null && timeFormat == null) {
+      return true;
+    }
+    return false;
+  }
+
+  @Override
+  public boolean isNotNullVisibleForFieldDate(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("nullRequired");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isNullRequiredVisibleForFieldDate(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("notNull");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
   public boolean isColumnMandatoryForFieldEnum(ShellContext shellContext) {
     return false;
   }
@@ -155,6 +251,24 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   @Override
   public boolean isTransientVisibleForFieldEnum(ShellContext shellContext) {
     return false;
+  }
+
+  @Override
+  public boolean isNotNullVisibleForFieldEnum(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("nullRequired");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isNullRequiredVisibleForFieldEnum(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("notNull");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
   }
 
   @Override
@@ -178,6 +292,36 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
+  public boolean isNullRequiredVisibleForFieldNumber(ShellContext shellContext) {
+
+    // Check if `notNull`is specified
+    String notNullParam = shellContext.getParameters().get("notNull");
+    if (notNullParam != null) {
+      return false;
+    }
+
+    // Check if type is primitive
+    String typeValue = shellContext.getParameters().get("type");
+    if (StringUtils.isNotBlank(typeValue)) {
+      JavaType numberType =
+          getJavaTypeConverter().convertFromText(typeValue, JavaType.class, "java-number");
+      if (numberType.isPrimitive()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isNotNullVisibleForFieldNumber(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("nullRequired");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
   public boolean isColumnMandatoryForFieldReference(ShellContext shellContext) {
     return false;
   }
@@ -193,17 +337,7 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
-  public boolean isCardinalityVisibleForFieldReference(ShellContext shellContext) {
-    return false;
-  }
-
-  @Override
   public boolean isFetchVisibleForFieldReference(ShellContext shellContext) {
-    return false;
-  }
-
-  @Override
-  public boolean isTransientVisibleForFieldReference(ShellContext shellContext) {
     return false;
   }
 
@@ -213,8 +347,21 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
-  public boolean areJoinTableParamsMandatoryForFieldSet(ShellContext shellContext) {
-    return false;
+  public boolean isNotNullVisibleForFieldReference(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("nullRequired");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isNullRequiredVisibleForFieldReference(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("notNull");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
   }
 
   @Override
@@ -243,12 +390,70 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
-  public boolean isTransientVisibleForFieldSet(ShellContext shellContext) {
+  public boolean isJoinTableVisibleForFieldSet(ShellContext shellContext) {
     return false;
   }
 
   @Override
-  public boolean isJoinTableVisibleForFieldSet(ShellContext shellContext) {
+  public boolean areOptionalParametersVisibleForFieldSet(ShellContext shellContext) {
+    return false;
+  }
+
+  @Override
+  public boolean areJoinTableParamsMandatoryForFieldSet(ShellContext shellContext) {
+    return false;
+  }
+
+  @Override
+  public boolean isJoinColumnNameMandatoryForFieldSet(ShellContext shellContext) {
+    return false;
+  }
+
+  @Override
+  public boolean isJoinColumnNameVisibleForFieldSet(ShellContext shellContext) {
+    return false;
+  }
+
+  @Override
+  public boolean isReferencedColumnNameVisibleForFieldSet(ShellContext shellContext) {
+    return false;
+  }
+
+  @Override
+  public boolean isNotNullVisibleForFieldSet(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("nullRequired");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isNullRequiredVisibleForFieldSet(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("notNull");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isJoinColumnNameMandatoryForFieldList(ShellContext shellContext) {
+    return false;
+  }
+
+  @Override
+  public boolean isJoinColumnNameVisibleForFieldList(ShellContext shellContext) {
+    return false;
+  }
+
+  @Override
+  public boolean isReferencedColumnNameVisibleForFieldList(ShellContext shellContext) {
+    return false;
+  }
+
+  @Override
+  public boolean areOptionalParametersVisibleForFieldList(ShellContext shellContext) {
     return false;
   }
 
@@ -283,13 +488,26 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
-  public boolean isTransientVisibleForFieldList(ShellContext shellContext) {
+  public boolean isJoinTableVisibleForFieldList(ShellContext shellContext) {
     return false;
   }
 
   @Override
-  public boolean isJoinTableVisibleForFieldList(ShellContext shellContext) {
-    return false;
+  public boolean isNotNullVisibleForFieldList(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("nullRequired");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isNullRequiredVisibleForFieldList(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("notNull");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
   }
 
   @Override
@@ -318,6 +536,24 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
+  public boolean isNotNullVisibleForFieldString(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("nullRequired");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isNullRequiredVisibleForFieldString(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("notNull");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
   public boolean isColumnMandatoryForFieldFile(ShellContext shellContext) {
     return false;
   }
@@ -340,17 +576,44 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   }
 
   @Override
+  public boolean isNotNullVisibleForFieldOther(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("nullRequired");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean isNullRequiredVisibleForFieldOther(ShellContext shellContext) {
+    String antagonistParam = shellContext.getParameters().get("notNull");
+    if (antagonistParam != null) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
   public void createBooleanField(ClassOrInterfaceTypeDetails javaTypeDetails, boolean primitive,
-      JavaSymbolName fieldName, boolean notNull, boolean nullRequired, boolean assertFalse,
-      boolean assertTrue, String column, String comment, String value, boolean permitReservedWords,
+      JavaSymbolName fieldName, boolean notNull, boolean assertFalse, boolean assertTrue,
+      String column, String comment, String value, boolean permitReservedWords,
       boolean transientModifier) {
+
+    createBooleanField(javaTypeDetails, primitive, fieldName, notNull, assertFalse, assertTrue,
+        column, comment, value, permitReservedWords, transientModifier, null);
+  }
+
+  @Override
+  public void createBooleanField(ClassOrInterfaceTypeDetails javaTypeDetails, boolean primitive,
+      JavaSymbolName fieldName, boolean notNull, boolean assertFalse, boolean assertTrue,
+      String column, String comment, String value, boolean permitReservedWords,
+      boolean transientModifier, List<AnnotationMetadataBuilder> extraAnnotations) {
 
     final String physicalTypeIdentifier = javaTypeDetails.getDeclaredByMetadataId();
     final BooleanField fieldDetails =
         new BooleanField(physicalTypeIdentifier, primitive ? JavaType.BOOLEAN_PRIMITIVE
             : JavaType.BOOLEAN_OBJECT, fieldName);
     fieldDetails.setNotNull(notNull);
-    fieldDetails.setNullRequired(nullRequired);
     fieldDetails.setAssertFalse(assertFalse);
     fieldDetails.setAssertTrue(assertTrue);
     if (column != null) {
@@ -363,7 +626,13 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       fieldDetails.setValue(value);
     }
 
+    if (extraAnnotations != null && !extraAnnotations.isEmpty()) {
+      fieldDetails.addAnnotations(extraAnnotations);
+    }
+
     insertField(fieldDetails, permitReservedWords, false);
+
+
   }
 
   @Override
@@ -372,7 +641,18 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       boolean past, DateFieldPersistenceType persistenceType, String column, String comment,
       DateTime dateFormat, DateTime timeFormat, String pattern, String value,
       boolean permitReservedWords, boolean transientModifier) {
+    createDateField(javaTypeDetails, fieldType, fieldName, notNull, nullRequired, future, past,
+        persistenceType, column, comment, dateFormat, timeFormat, pattern, value,
+        permitReservedWords, transientModifier, null);
+  }
 
+  @Override
+  public void createDateField(ClassOrInterfaceTypeDetails javaTypeDetails, JavaType fieldType,
+      JavaSymbolName fieldName, boolean notNull, boolean nullRequired, boolean future,
+      boolean past, DateFieldPersistenceType persistenceType, String column, String comment,
+      DateTime dateFormat, DateTime timeFormat, String pattern, String value,
+      boolean permitReservedWords, boolean transientModifier,
+      List<AnnotationMetadataBuilder> extraAnnotations) {
     final String physicalTypeIdentifier = javaTypeDetails.getDeclaredByMetadataId();
     final DateField fieldDetails = new DateField(physicalTypeIdentifier, fieldType, fieldName);
     fieldDetails.setNotNull(notNull);
@@ -401,13 +681,23 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       fieldDetails.setValue(value);
     }
 
+    if (extraAnnotations != null && !extraAnnotations.isEmpty()) {
+      fieldDetails.addAnnotations(extraAnnotations);
+    }
+
     insertField(fieldDetails, permitReservedWords, false);
+
   }
 
   @Override
   public void createEmbeddedField(JavaType typeName, JavaType fieldType, JavaSymbolName fieldName,
       boolean permitReservedWords) {
+    createEmbeddedField(typeName, fieldType, fieldName, permitReservedWords, null);
+  }
 
+  @Override
+  public void createEmbeddedField(JavaType typeName, JavaType fieldType, JavaSymbolName fieldName,
+      boolean permitReservedWords, List<AnnotationMetadataBuilder> extraAnnotations) {
     throw new IllegalArgumentException("'field embedded' command is not available for DTO classes.");
   }
 
@@ -415,6 +705,15 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   public void createEnumField(ClassOrInterfaceTypeDetails cid, JavaType fieldType,
       JavaSymbolName fieldName, String column, boolean notNull, boolean nullRequired,
       EnumType enumType, String comment, boolean permitReservedWords, boolean transientModifier) {
+    createEnumField(cid, fieldType, fieldName, column, notNull, nullRequired, enumType, comment,
+        permitReservedWords, transientModifier, null);
+  }
+
+  @Override
+  public void createEnumField(ClassOrInterfaceTypeDetails cid, JavaType fieldType,
+      JavaSymbolName fieldName, String column, boolean notNull, boolean nullRequired,
+      EnumType enumType, String comment, boolean permitReservedWords, boolean transientModifier,
+      List<AnnotationMetadataBuilder> extraAnnotations) {
 
     final String physicalTypeIdentifier = cid.getDeclaredByMetadataId();
     final EnumField fieldDetails = new EnumField(physicalTypeIdentifier, fieldType, fieldName);
@@ -430,6 +729,10 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       fieldDetails.setComment(comment);
     }
 
+    if (extraAnnotations != null && !extraAnnotations.isEmpty()) {
+      fieldDetails.addAnnotations(extraAnnotations);
+    }
+
     insertField(fieldDetails, permitReservedWords, false);
   }
 
@@ -440,6 +743,20 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       Integer digitsInteger, Integer digitsFraction, Long min, Long max, String column,
       String comment, boolean unique, String value, boolean permitReservedWords,
       boolean transientModifier) {
+
+    createNumericField(javaTypeDetails, fieldType, primitive, legalNumericPrimitives, fieldName,
+        notNull, nullRequired, decimalMin, decimalMax, digitsInteger, digitsFraction, min, max,
+        column, comment, unique, value, permitReservedWords, transientModifier, null);
+
+  }
+
+  @Override
+  public void createNumericField(ClassOrInterfaceTypeDetails javaTypeDetails, JavaType fieldType,
+      boolean primitive, Set<String> legalNumericPrimitives, JavaSymbolName fieldName,
+      boolean notNull, boolean nullRequired, String decimalMin, String decimalMax,
+      Integer digitsInteger, Integer digitsFraction, Long min, Long max, String column,
+      String comment, boolean unique, String value, boolean permitReservedWords,
+      boolean transientModifier, List<AnnotationMetadataBuilder> extraAnnotations) {
 
     final String physicalTypeIdentifier = javaTypeDetails.getDeclaredByMetadataId();
     if (primitive && legalNumericPrimitives.contains(fieldType.getFullyQualifiedTypeName())) {
@@ -481,166 +798,47 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       fieldDetails.setValue(value);
     }
 
+    if (extraAnnotations != null && !extraAnnotations.isEmpty()) {
+      fieldDetails.addAnnotations(extraAnnotations);
+    }
+
     Validate.isTrue(fieldDetails.isDigitsSetCorrectly(),
-        "Must specify both --digitsInteger and --digitsFractional for @Digits to be added");
+        "Must specify both --digitsInteger and --digitsFraction for @Digits to be added");
 
     insertField(fieldDetails, permitReservedWords, false);
+
   }
 
   @Override
-  public void createReferenceField(ClassOrInterfaceTypeDetails cid, Cardinality cardinality,
-      JavaType typeName, JavaType fieldType, JavaSymbolName fieldName, Cascade cascadeType,
-      boolean notNull, boolean nullRequired, String joinColumnName, String referencedColumnName,
-      Fetch fetch, String comment, boolean permitReservedWords, boolean transientModifier) {
-
+  public void createReferenceField(JavaType typeName, JavaType fieldType, JavaSymbolName fieldName,
+      boolean aggregation, JavaSymbolName mappedBy, Cascade[] cascadeType, boolean notNull,
+      String joinColumnName, String referencedColumnName, Fetch fetch, String comment,
+      boolean permitReservedWords, Boolean orphanRemoval, boolean isForce, String formatExpression,
+      String formatMessage) {
     throw new IllegalArgumentException(
         "'field reference' command is not available for DTO classes.");
   }
 
   @Override
-  public void createSetField(ClassOrInterfaceTypeDetails cid, Cardinality cardinality,
-      JavaType typeName, JavaType fieldType, JavaSymbolName fieldName, Cascade cascadeType,
-      boolean notNull, boolean nullRequired, Integer sizeMin, Integer sizeMax,
-      JavaSymbolName mappedBy, Fetch fetch, String comment, String joinTable, String joinColumns,
-      String referencedColumns, String inverseJoinColumns, String inverseReferencedColumns,
-      boolean permitReservedWords, boolean transientModifier) {
-
-    final ClassOrInterfaceTypeDetails javaTypeDetails =
-        typeLocationService.getTypeDetails(typeName);
-    Validate.notNull(javaTypeDetails, "The type specified, '%s', doesn't exist", typeName);
-
-    cardinality = null;
-
-    final String physicalTypeIdentifier = javaTypeDetails.getDeclaredByMetadataId();
-    final SetField fieldDetails =
-        new SetField(physicalTypeIdentifier, new JavaType(SET.getFullyQualifiedTypeName(), 0,
-            DataType.TYPE, null, Arrays.asList(fieldType)), fieldName, fieldType, cardinality,
-            cascadeType, true);
-    fieldDetails.setNotNull(notNull);
-    fieldDetails.setNullRequired(nullRequired);
-    if (sizeMin != null) {
-      fieldDetails.setSizeMin(sizeMin);
-    }
-    if (sizeMax != null) {
-      fieldDetails.setSizeMax(sizeMax);
-    }
-    if (mappedBy != null) {
-      fieldDetails.setMappedBy(mappedBy);
-    }
-    if (fetch != null) {
-      fieldDetails.setFetch(fetch);
-    }
-    if (comment != null) {
-      fieldDetails.setComment(comment);
-    }
-    if (joinTable != null) {
-
-      // Create strings arrays and set @JoinTable annotation
-      String[] joinColumnsArray = null;
-      String[] referencedColumnsArray = null;
-      String[] inverseJoinColumnsArray = null;
-      String[] inverseReferencedColumnsArray = null;
-      if (joinColumns != null) {
-        joinColumnsArray = joinColumns.replace(" ", "").split(",");
-      }
-      if (referencedColumns != null) {
-        referencedColumnsArray = referencedColumns.replace(" ", "").split(",");
-      }
-      if (inverseJoinColumns != null) {
-        inverseJoinColumnsArray = inverseJoinColumns.replace(" ", "").split(",");
-      }
-      if (inverseReferencedColumns != null) {
-        inverseReferencedColumnsArray = inverseReferencedColumns.replace(" ", "").split(",");
-      }
-
-      // Validate same number of elements
-      if (joinColumnsArray != null && referencedColumnsArray != null) {
-        Validate.isTrue(joinColumnsArray.length == referencedColumnsArray.length,
-            "--joinColumns and --referencedColumns must have same number of column values");
-      }
-      if (inverseJoinColumnsArray != null && inverseReferencedColumnsArray != null) {
-        Validate
-            .isTrue(inverseJoinColumnsArray.length == inverseReferencedColumnsArray.length,
-                "--inverseJoinColumns and --inverseReferencedColumns must have same number of column values");
-      }
-
-      fieldDetails.setJoinTableAnnotation(joinTable, joinColumnsArray, referencedColumnsArray,
-          inverseJoinColumnsArray, inverseReferencedColumnsArray);
-    }
-
-    insertField(fieldDetails, permitReservedWords, false);
+  public void createSetField(JavaType typeName, JavaType fieldType, JavaSymbolName fieldName,
+      Cardinality cardinality, Cascade[] cascadeType, boolean notNull, Integer sizeMin,
+      Integer sizeMax, JavaSymbolName mappedBy, Fetch fetch, String comment, String joinColumn,
+      String referencedColumn, String joinTable, String joinColumns, String referencedColumns,
+      String inverseJoinColumns, String inverseReferencedColumns, boolean permitReservedWords,
+      Boolean aggregation, Boolean orphanRemoval, boolean isForce, String formatExpression,
+      String formatMessage) {
+    throw new IllegalArgumentException("'field set' command is not available for DTO classes.");
   }
 
   @Override
-  public void createListField(ClassOrInterfaceTypeDetails cid, Cardinality cardinality,
-      JavaType typeName, JavaType fieldType, JavaSymbolName fieldName, Cascade cascadeType,
-      boolean notNull, boolean nullRequired, Integer sizeMin, Integer sizeMax,
-      JavaSymbolName mappedBy, Fetch fetch, String comment, String joinTable, String joinColumns,
-      String referencedColumns, String inverseJoinColumns, String inverseReferencedColumns,
-      boolean permitReservedWords, boolean transientModifier) {
-
-    final ClassOrInterfaceTypeDetails javaTypeDetails =
-        typeLocationService.getTypeDetails(typeName);
-    Validate.notNull(javaTypeDetails, "The type specified, '%s' doesn't exist", typeName);
-
-    final String physicalTypeIdentifier = javaTypeDetails.getDeclaredByMetadataId();
-    final ListField fieldDetails =
-        new ListField(physicalTypeIdentifier, new JavaType(LIST.getFullyQualifiedTypeName(), 0,
-            DataType.TYPE, null, Arrays.asList(fieldType)), fieldName, fieldType, cardinality,
-            cascadeType, true);
-    fieldDetails.setNotNull(notNull);
-    fieldDetails.setNullRequired(nullRequired);
-    if (sizeMin != null) {
-      fieldDetails.setSizeMin(sizeMin);
-    }
-    if (sizeMax != null) {
-      fieldDetails.setSizeMax(sizeMax);
-    }
-    if (mappedBy != null) {
-      fieldDetails.setMappedBy(mappedBy);
-    }
-    if (fetch != null) {
-      fieldDetails.setFetch(fetch);
-    }
-    if (comment != null) {
-      fieldDetails.setComment(comment);
-    }
-    if (joinTable != null) {
-
-      // Create strings arrays and set @JoinTable annotation
-      String[] joinColumnsArray = null;
-      String[] referencedColumnsArray = null;
-      String[] inverseJoinColumnsArray = null;
-      String[] inverseReferencedColumnsArray = null;
-      if (joinColumns != null) {
-        joinColumnsArray = joinColumns.replace(" ", "").split(",");
-      }
-      if (referencedColumns != null) {
-        referencedColumnsArray = referencedColumns.replace(" ", "").split(",");
-      }
-      if (inverseJoinColumns != null) {
-        inverseJoinColumnsArray = inverseJoinColumns.replace(" ", "").split(",");
-      }
-      if (inverseReferencedColumns != null) {
-        inverseReferencedColumnsArray = inverseReferencedColumns.replace(" ", "").split(",");
-      }
-
-      // Validate same number of elements
-      if (joinColumnsArray != null && referencedColumnsArray != null) {
-        Validate.isTrue(joinColumnsArray.length == referencedColumnsArray.length,
-            "--joinColumns and --referencedColumns must have same number of column values");
-      }
-      if (inverseJoinColumnsArray != null && inverseReferencedColumnsArray != null) {
-        Validate.isTrue(inverseJoinColumnsArray.length == inverseReferencedColumnsArray.length,
-            "--inverseJoinColumns and --inverseReferencedColumns must have same "
-                + "number of column values");
-      }
-
-      fieldDetails.setJoinTableAnnotation(joinTable, joinColumnsArray, referencedColumnsArray,
-          inverseJoinColumnsArray, inverseReferencedColumnsArray);
-    }
-
-    insertField(fieldDetails, permitReservedWords, false);
+  public void createListField(JavaType typeName, JavaType fieldType, JavaSymbolName fieldName,
+      Cardinality cardinality, Cascade[] cascadeType, boolean notNull, Integer sizeMin,
+      Integer sizeMax, JavaSymbolName mappedBy, Fetch fetch, String comment, String joinColumn,
+      String referencedColumn, String joinTable, String joinColumns, String referencedColumns,
+      String inverseJoinColumns, String inverseReferencedColumns, boolean permitReservedWords,
+      Boolean aggregation, Boolean orphanRemoval, boolean isForce, String formatExpression,
+      String formatMessage) {
+    throw new IllegalArgumentException("'field list' command is not available for DTO classes.");
   }
 
   @Override
@@ -648,6 +846,19 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       boolean notNull, boolean nullRequired, String decimalMin, String decimalMax, Integer sizeMin,
       Integer sizeMax, String regexp, String column, String comment, boolean unique, String value,
       boolean lob, boolean permitReservedWords, boolean transientModifier) {
+
+    createStringField(cid, fieldName, notNull, nullRequired, decimalMin, decimalMax, sizeMin,
+        sizeMax, regexp, column, comment, unique, value, lob, permitReservedWords,
+        transientModifier, null);
+
+  }
+
+  @Override
+  public void createStringField(ClassOrInterfaceTypeDetails cid, JavaSymbolName fieldName,
+      boolean notNull, boolean nullRequired, String decimalMin, String decimalMax, Integer sizeMin,
+      Integer sizeMax, String regexp, String column, String comment, boolean unique, String value,
+      boolean lob, boolean permitReservedWords, boolean transientModifier,
+      List<AnnotationMetadataBuilder> extraAnnotations) {
 
     final String physicalTypeIdentifier = cid.getDeclaredByMetadataId();
     final StringField fieldDetails = new StringField(physicalTypeIdentifier, fieldName);
@@ -693,13 +904,28 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       fieldDetails.getInitedAnnotations().add(basicAnnotation);
     }
 
+    if (extraAnnotations != null && !extraAnnotations.isEmpty()) {
+      fieldDetails.addAnnotations(extraAnnotations);
+    }
+
     insertField(fieldDetails, permitReservedWords, false);
+
   }
 
   @Override
   public void createFileField(ClassOrInterfaceTypeDetails cid, JavaSymbolName fieldName,
       UploadedFileContentType contentType, boolean autoUpload, boolean notNull, String column,
       boolean permitReservedWords) {
+    createFileField(cid, fieldName, contentType, autoUpload, notNull, column, permitReservedWords,
+        null);
+
+  }
+
+  @Override
+  public void createFileField(ClassOrInterfaceTypeDetails cid, JavaSymbolName fieldName,
+      UploadedFileContentType contentType, boolean autoUpload, boolean notNull, String column,
+      boolean permitReservedWords, List<AnnotationMetadataBuilder> extraAnnotations) {
+
 
     final String physicalTypeIdentifier = cid.getDeclaredByMetadataId();
     final UploadedFileField fieldDetails =
@@ -710,6 +936,10 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
       fieldDetails.setColumn(column);
     }
 
+    if (extraAnnotations != null && !extraAnnotations.isEmpty()) {
+      fieldDetails.addAnnotations(extraAnnotations);
+    }
+
     insertField(fieldDetails, permitReservedWords, false);
   }
 
@@ -717,6 +947,17 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
   public void createOtherField(ClassOrInterfaceTypeDetails cid, JavaType fieldType,
       JavaSymbolName fieldName, boolean notNull, boolean nullRequired, String comment,
       String column, boolean permitReservedWords, boolean transientModifier) {
+    createOtherField(cid, fieldType, fieldName, notNull, nullRequired, comment, column,
+        permitReservedWords, transientModifier, null);
+
+  }
+
+  @Override
+  public void createOtherField(ClassOrInterfaceTypeDetails cid, JavaType fieldType,
+      JavaSymbolName fieldName, boolean notNull, boolean nullRequired, String comment,
+      String column, boolean permitReservedWords, boolean transientModifier,
+      List<AnnotationMetadataBuilder> extraAnnotations) {
+
 
     final String physicalTypeIdentifier = cid.getDeclaredByMetadataId();
     final FieldDetails fieldDetails =
@@ -728,6 +969,10 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
     }
     if (column != null) {
       fieldDetails.setColumn(column);
+    }
+
+    if (extraAnnotations != null && !extraAnnotations.isEmpty()) {
+      fieldDetails.addAnnotations(extraAnnotations);
     }
 
     insertField(fieldDetails, permitReservedWords, false);
@@ -862,7 +1107,7 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
 
   /**
    * Replaces a JavaType fullyQualifiedName for a shorter name using '~' for TopLevelPackage
-   * 
+   *
    * @param cid ClassOrInterfaceTypeDetails of a JavaType
    * @param currentText String current text for option value
    * @return the String representing a JavaType with its name shortened
@@ -905,7 +1150,7 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
     if ((StringUtils.isBlank(currentText) || auxString.startsWith(currentText))
         && StringUtils.contains(javaTypeFullyQualilfiedName, topLevelPackageString)) {
 
-      // Value is for autocomplete only or user wrote abbreviate value  
+      // Value is for autocomplete only or user wrote abbreviate value
       javaTypeString = auxString;
     } else {
 
@@ -914,5 +1159,33 @@ public class DtoFieldCreatorProvider implements FieldCreatorProvider {
     }
 
     return javaTypeString;
+  }
+
+  @SuppressWarnings("unchecked")
+  public Converter<JavaType> getJavaTypeConverter() {
+    if (javaTypeConverter == null) {
+
+      // Get all Services implement JavaTypeConverter interface
+      try {
+        ServiceReference<?>[] references =
+            this.context.getAllServiceReferences(Converter.class.getName(), null);
+
+        for (ServiceReference<?> ref : references) {
+          Converter<?> converter = (Converter<?>) this.context.getService(ref);
+          if (converter.supports(JavaType.class, PROJECT)) {
+            javaTypeConverter = (Converter<JavaType>) converter;
+            return javaTypeConverter;
+          }
+        }
+
+        return null;
+
+      } catch (InvalidSyntaxException e) {
+        LOGGER.warning("ERROR: Cannot load JavaTypeConverter on JpaFieldCreatorProvider.");
+        return null;
+      }
+    } else {
+      return javaTypeConverter;
+    }
   }
 }
